@@ -15,8 +15,14 @@
     "react-native": "0.81.5"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
     "@types/react": "~19.1.0",
-    "typescript": "~5.9.2"
+    "eslint": "^9.39.1",
+    "eslint-plugin-react": "^7.37.5",
+    "globals": "^16.5.0",
+    "jiti": "^2.6.1",
+    "typescript": "~5.9.2",
+    "typescript-eslint": "^8.46.4"
   },
   "private": true
 }
