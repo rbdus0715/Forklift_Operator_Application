@@ -1,18 +1,7 @@
-import { Text, View } from "react-native";
+import { HomeScreen } from "./screens/HomeScreen";
 
 export const App = () => {
-  return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        backgroundColor: "#FFFFFF",
-      }}
-    >
-      <Text>Hello, World!</Text>
-    </View>
-  );
+  return <HomeScreen />;
 };
 
 export default App;
