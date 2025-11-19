@@ -37,14 +37,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.white,
-    paddingTop: 60,
+    justifyContent: "center",
+    alignItems: "center",
     paddingHorizontal: 24,
-    paddingBottom: 40,
   },
   header: {
+    position: "absolute",
+    top: 60,
+    left: 24,
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 80,
   },
   title: {
     fontSize: 24,
@@ -53,15 +55,17 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   buttonContainer: {
-    flex: 1,
     justifyContent: "center",
-    gap: 16,
+    alignItems: "center",
+    gap: 30,
   },
   button: {
+    width: 251,
+    height: 95,
     backgroundColor: colors.white,
     borderRadius: 12,
-    paddingVertical: 18,
-    paddingHorizontal: 24,
+    justifyContent: "center",
+    alignItems: "center",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -78,10 +82,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   tagline: {
+    position: "absolute",
+    bottom: 40,
+    left: 0,
+    right: 0,
     fontSize: 14,
     color: colors.textLight,
     textAlign: "center",
-    marginTop: "auto",
   },
 });
 
