@@ -13,7 +13,8 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.rbdus0715.Forklift-Operator-Application"
     },
     "android": {
       "adaptiveIcon": {

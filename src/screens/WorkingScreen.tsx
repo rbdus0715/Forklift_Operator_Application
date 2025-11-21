@@ -1,14 +1,163 @@
-import React from "react";
-import { View, Text, StyleSheet, Pressable, Alert } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { View, Text, StyleSheet, Pressable, Alert, BackHandler } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { HomeRoutes } from "../navigations/routes";
 import { HomeNavigation } from "../navigations/types";
 import { BLACK, WHITE, GRAY, RED } from "../color";
+import Socket from "react-native-tcp-socket";
 
 const BORDER_WIDTH = 0.2;
+const SOCKET_HOST = "192.168.50.1";
+const SOCKET_PORT = 9000;
 
 export const WorkingScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
+  const socketRef = useRef<Socket.Socket | null>(null);
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isConnectedRef = useRef<boolean>(false);
+  const failureHandledRef = useRef<boolean>(false);
+  const isMountedRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    // TCP 소켓 연결
+    console.log("소켓 연결 시도:", `${SOCKET_HOST}:${SOCKET_PORT}`);
+    console.log("연결 시작 시간:", new Date().toISOString());
+
+    const handleConnectionFailure = () => {
+      if (!failureHandledRef.current) {
+        failureHandledRef.current = true;
+        // console.error("연결 실패 처리 시작");
+        Alert.alert("서버 연결 실패했습니다", "서버와의 연결이 끊어졌습니다.", [
+          {
+            text: "확인",
+            onPress: () => {
+              navigation.navigate(HomeRoutes.HOME);
+            },
+          },
+        ]);
+      }
+    };
+
+    const handleDisconnection = () => {
+      if (isConnectedRef.current && !failureHandledRef.current) {
+        // 연결 후 끊어진 경우
+        // console.error("작업 중 연결 끊김");
+        Alert.alert("연결이 끊어졌습니다", "서버와의 연결이 끊어졌습니다. 홈으로 돌아갑니다.", [
+          {
+            text: "확인",
+            onPress: () => {
+              navigation.navigate(HomeRoutes.HOME);
+            },
+          },
+        ]);
+      }
+    };
+    
+    try {
+      const socket = Socket.createConnection(
+        {
+          host: SOCKET_HOST,
+          port: SOCKET_PORT,
+        },
+        () => {
+          // 연결 성공
+          console.log("소켓 연결 성공");
+          console.log("연결 성공 시간:", new Date().toISOString());
+          isConnectedRef.current = true;
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+          }
+        }
+      );
+
+      // 연결 타임아웃 설정 (30초)
+      connectionTimeoutRef.current = setTimeout(() => {
+        // console.error("연결 타임아웃 (30초 경과)");
+        if (socketRef.current) {
+          socketRef.current.destroy();
+        }
+        handleConnectionFailure();
+      }, 30000);
+
+      const handleData = (data: any) => {
+        if (!isMountedRef.current) return;
+        const dataString = data.toString();
+        console.log("받은 데이터:", dataString);
+        // JSON 데이터인 경우 파싱 시도
+        try {
+          const parsed = JSON.parse(dataString);
+          console.log("파싱된 데이터:", parsed);
+        } catch (e) {
+          // JSON이 아니면 그대로 출력
+        }
+      };
+
+      socket.on("data", handleData);
+
+      const handleError = (error: any) => {
+        if (!isMountedRef.current) return;
+        // console.error("소켓 에러 발생");
+        // console.error("에러 시간:", new Date().toISOString());
+        // console.error("에러 상세:", error);
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+        }
+        if (!isConnectedRef.current) {
+          // 연결 전 에러인 경우
+          handleConnectionFailure();
+        } else {
+          // 연결 후 에러인 경우
+          handleDisconnection();
+        }
+      };
+
+      socket.on("error", handleError);
+
+      const handleClose = () => {
+        if (!isMountedRef.current) return;
+        console.log("소켓 연결 종료");
+        console.log("종료 시간:", new Date().toISOString());
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+        }
+        // 연결 성공하지 않은 경우 실패 처리
+        if (!isConnectedRef.current && !failureHandledRef.current) {
+          setTimeout(() => {
+            if (isMountedRef.current) {
+              handleConnectionFailure();
+            }
+          }, 100);
+        } else if (isConnectedRef.current && !failureHandledRef.current) {
+          // 연결 후 끊어진 경우
+          handleDisconnection();
+        }
+      };
+
+      socket.on("close", handleClose);
+
+      socketRef.current = socket;
+
+      // 컴포넌트 언마운트 시 연결 종료
+      return () => {
+        isMountedRef.current = false;
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
+        if (socketRef.current) {
+          // 모든 이벤트 리스너 제거
+          socketRef.current.removeAllListeners("data");
+          socketRef.current.removeAllListeners("error");
+          socketRef.current.removeAllListeners("close");
+          socketRef.current.destroy();
+          socketRef.current = null;
+        }
+      };
+    } catch (error) {
+      // console.error("TCP 소켓 생성 실패:", error);
+      handleConnectionFailure();
+    }
+  }, [navigation]);
 
   const handleExit = () => {
     Alert.alert("종료하시겠습니까?", "", [
@@ -19,11 +168,35 @@ export const WorkingScreen = () => {
       {
         text: "확인",
         onPress: () => {
+          // 소켓 연결 종료
+          isMountedRef.current = false;
+          if (socketRef.current) {
+            // 모든 이벤트 리스너 제거
+            socketRef.current.removeAllListeners("data");
+            socketRef.current.removeAllListeners("error");
+            socketRef.current.removeAllListeners("close");
+            socketRef.current.destroy();
+            socketRef.current = null;
+          }
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
           navigation.navigate(HomeRoutes.HOME);
         },
       },
     ]);
   };
+
+  // Android 뒤로가기 버튼 처리
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener("hardwareBackPress", () => {
+      handleExit();
+      return true; // 기본 뒤로가기 동작 방지
+    });
+
+    return () => backHandler.remove();
+  }, []);
 
   return (
     <View style={styles.container}>
