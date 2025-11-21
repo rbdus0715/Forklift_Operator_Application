@@ -1,7 +1,7 @@
-import { HomeScreen } from "./screens/HomeScreen";
+import Navigation from "./navigations/Navigation";
 
 export const App = () => {
-  return <HomeScreen />;
+  return <Navigation />;
 };
 
 export default App;
