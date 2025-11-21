@@ -1,14 +1,18 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, Pressable } from "react-native";
 import { SvgXml } from "react-native-svg";
-import { colors } from "../color";
+import { GRAY, PRIMARY, WHITE } from "../color";
+import { useNavigation } from "@react-navigation/native";
+import { HomeRoutes } from "../navigations/routes";
+import { HomeNavigation } from "../navigations/types";
 
-const logoSvg = `<svg width="38" height="38" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+export const HomeScreen = () => {
+  const logoSvg = `<svg width="38" height="38" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
 <circle cx="19" cy="19" r="19" fill="#015CAE"/>
 <path d="M18.9982 28.48C18.1182 28.48 17.3682 28.18 16.7482 27.58C16.1482 26.98 15.8482 26.25 15.8482 25.39C15.8482 24.51 16.1482 23.77 16.7482 23.17C17.3682 22.57 18.1182 22.27 18.9982 22.27C19.8782 22.27 20.6182 22.57 21.2182 23.17C21.8382 23.77 22.1482 24.51 22.1482 25.39C22.1482 26.25 21.8382 26.98 21.2182 27.58C20.6182 28.18 19.8782 28.48 18.9982 28.48ZM18.9982 8.17C19.9982 8.17 20.7982 8.45 21.3982 9.01C22.0182 9.55 22.3282 10.34 22.3282 11.38C22.3282 11.92 22.2282 12.67 22.0282 13.63C21.8282 14.59 21.4082 15.96 20.7682 17.74L19.8982 20.11H18.0982L17.2282 17.74C16.5682 15.96 16.1382 14.59 15.9382 13.63C15.7582 12.67 15.6682 11.92 15.6682 11.38C15.6682 10.34 15.9682 9.55 16.5682 9.01C17.1682 8.45 17.9782 8.17 18.9982 8.17Z" fill="white"/>
 </svg>`;
+  const navigation = useNavigation<HomeNavigation>();
 
-export const HomeScreen = () => {
   return (
     <View style={styles.container}>
       {/* 헤더: 로고 + Factorial 텍스트 */}
@@ -19,12 +23,15 @@ export const HomeScreen = () => {
 
       {/* 버튼 영역 */}
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.button}>
+        <Pressable style={styles.button}>
           <Text style={styles.buttonText}>시작하기</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.button}>
+        </Pressable>
+        <Pressable
+          style={styles.button}
+          onPress={() => navigation.navigate(HomeRoutes.LOG)}
+        >
           <Text style={styles.buttonText}>로그 확인</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       {/* 태그라인 */}
@@ -36,7 +43,7 @@ export const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: WHITE,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 24,
@@ -51,7 +58,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: "700",
-    color: colors.text,
+    color: PRIMARY.DARK,
     marginLeft: 12,
   },
   buttonContainer: {
@@ -62,7 +69,7 @@ const styles = StyleSheet.create({
   button: {
     width: 251,
     height: 95,
-    backgroundColor: colors.white,
+    backgroundColor: WHITE,
     borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
@@ -78,7 +85,7 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 30,
     fontWeight: "700",
-    color: colors.text,
+    color: PRIMARY.DARK,
     textAlign: "center",
   },
   tagline: {
@@ -87,8 +94,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     fontSize: 14,
-    color: colors.textLight,
+    color: GRAY,
     textAlign: "center",
   },
 });
-
