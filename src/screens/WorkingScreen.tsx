@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, Pressable } from "react-native";
+import { View, Text, StyleSheet, Pressable, Alert } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { HomeRoutes } from "../navigations/routes";
 import { HomeNavigation } from "../navigations/types";
@@ -8,8 +8,23 @@ import { BLACK, WHITE, GRAY } from "../color";
 export const WorkingScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
 
-  const handleBackPress = () => {
-    navigation.navigate(HomeRoutes.HOME);
+  const handleExit = () => {
+    Alert.alert(
+      "종료하시겠습니까?",
+      "",
+      [
+        {
+          text: "취소",
+          style: "cancel",
+        },
+        {
+          text: "확인",
+          onPress: () => {
+            navigation.navigate(HomeRoutes.HOME);
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -18,7 +33,7 @@ export const WorkingScreen = () => {
       <View style={styles.header}>
         <Pressable
           style={styles.backButton}
-          onPress={handleBackPress}
+          onPress={handleExit}
         >
           <Text style={styles.backIcon}>←</Text>
         </Pressable>
@@ -51,7 +66,7 @@ export const WorkingScreen = () => {
       </View>
 
       {/* 종료 버튼 */}
-      <Pressable style={styles.endButton}>
+      <Pressable style={styles.endButton} onPress={handleExit}>
         <Text style={styles.endButtonText}>종료</Text>
       </Pressable>
     </View>
