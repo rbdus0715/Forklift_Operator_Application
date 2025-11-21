@@ -3,38 +3,33 @@ import { View, Text, StyleSheet, Pressable, Alert } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { HomeRoutes } from "../navigations/routes";
 import { HomeNavigation } from "../navigations/types";
-import { BLACK, WHITE, GRAY } from "../color";
+import { BLACK, WHITE, GRAY, RED } from "../color";
+
+const BORDER_WIDTH = 0.2;
 
 export const WorkingScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
 
   const handleExit = () => {
-    Alert.alert(
-      "종료하시겠습니까?",
-      "",
-      [
-        {
-          text: "취소",
-          style: "cancel",
+    Alert.alert("종료하시겠습니까?", "", [
+      {
+        text: "취소",
+        style: "cancel",
+      },
+      {
+        text: "확인",
+        onPress: () => {
+          navigation.navigate(HomeRoutes.HOME);
         },
-        {
-          text: "확인",
-          onPress: () => {
-            navigation.navigate(HomeRoutes.HOME);
-          },
-        },
-      ]
-    );
+      },
+    ]);
   };
 
   return (
     <View style={styles.container}>
       {/* 헤더 */}
       <View style={styles.header}>
-        <Pressable
-          style={styles.backButton}
-          onPress={handleExit}
-        >
+        <Pressable style={styles.backButton} onPress={handleExit}>
           <Text style={styles.backIcon}>←</Text>
         </Pressable>
         <Text style={styles.headerTitle}>작업 중</Text>
@@ -49,16 +44,17 @@ export const WorkingScreen = () => {
         <View style={styles.circle1} />
         <View style={styles.circle2} />
         <View style={styles.circle3} />
-        
+        <View style={styles.circle4} />
+
         {/* 수평선 */}
         <View style={styles.horizontalLine} />
-        
+
         {/* 중앙 원 */}
         <View style={styles.centerCircle} />
-        
+
         {/* 거리 표시 */}
         <Text style={styles.distanceText}>3m</Text>
-        
+
         {/* 사용자 아이콘 (왼쪽 상단) */}
         <View style={styles.userIcon}>
           <Text style={styles.userIconText}>👤</Text>
@@ -114,39 +110,47 @@ const styles = StyleSheet.create({
     color: BLACK,
   },
   radarContainer: {
-    flex: 1,
+    flex: 0.85,
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
   },
   circle1: {
     position: "absolute",
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 1,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    borderWidth: BORDER_WIDTH,
     borderColor: GRAY,
   },
   circle2: {
     position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    borderWidth: 1,
-    borderColor: GRAY,
-  },
-  circle3: {
-    position: "absolute",
     width: 300,
     height: 300,
     borderRadius: 150,
-    borderWidth: 1,
-    borderColor: "#FF0000",
+    borderWidth: BORDER_WIDTH,
+    borderColor: RED,
+  },
+  circle3: {
+    position: "absolute",
+    width: 450,
+    height: 450,
+    borderRadius: 250,
+    borderWidth: BORDER_WIDTH,
+    borderColor: GRAY,
+  },
+  circle4: {
+    position: "absolute",
+    width: 600,
+    height: 600,
+    borderRadius: 300,
+    borderWidth: BORDER_WIDTH,
+    borderColor: GRAY,
   },
   horizontalLine: {
     position: "absolute",
-    width: "80%",
-    height: 1,
+    width: "100%",
+    height: BORDER_WIDTH,
     backgroundColor: GRAY,
   },
   centerCircle: {
@@ -158,7 +162,7 @@ const styles = StyleSheet.create({
   },
   distanceText: {
     position: "absolute",
-    right: "25%",
+    right: "5%",
     color: "#FF0000",
     fontSize: 16,
     fontWeight: "600",
@@ -194,4 +198,3 @@ const styles = StyleSheet.create({
     color: BLACK,
   },
 });
-
