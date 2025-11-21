@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { HomeNavigation } from "../navigations/types";
-import { WHITE, PRIMARY, GRAY, BLACK } from "../color";
+import { WHITE, BLACK } from "../color";
 import LogCard from "../components/LogCard/LogCard";
 
 const LogScreen = () => {
@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
     color: BLACK,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 25,
     fontWeight: "700",
     color: BLACK,
     flex: 1,
@@ -85,7 +85,6 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
-
 });
 
 export default LogScreen;

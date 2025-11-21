@@ -23,7 +23,10 @@ export const HomeScreen = () => {
 
       {/* 버튼 영역 */}
       <View style={styles.buttonContainer}>
-        <Pressable style={styles.button}>
+        <Pressable
+          style={styles.button}
+          onPress={() => navigation.navigate(HomeRoutes.LOADING)}
+        >
           <Text style={styles.buttonText}>시작하기</Text>
         </Pressable>
         <Pressable
