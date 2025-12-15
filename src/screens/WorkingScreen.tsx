@@ -1,10 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Alert, BackHandler, Dimensions } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HomeRoutes } from "../navigations/routes";
 import { HomeNavigation } from "../navigations/types";
 import { BLACK, WHITE, GRAY, RED } from "../color";
 import Socket from "react-native-tcp-socket";
+import { WarningLog } from "../components/LogCard/LogCard";
+
+const WARNING_LOGS_KEY = "@warning_logs";
+const WARNING_DURATION_THRESHOLD = 1000; // 1초 (밀리초)
 
 const BORDER_WIDTH = 0.2;
 const SOCKET_HOST = "192.168.50.1";
@@ -19,6 +24,52 @@ const CENTER_OFFSET_Y = 180; // 중심점을 아래로 이동 (더 아래로)
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const RADAR_CENTER_Y = SCREEN_HEIGHT * 0.425 + CENTER_OFFSET_Y; // 레이더 컨테이너의 중심 Y 위치
 
+// 샘플링 주기 (초)
+const SAMPLING_PERIOD = 0.1;
+
+// 1D 칼만 필터 클래스
+class KalmanFilter1D {
+  private x: number; // 상태 추정값 (거리)
+  private P: number; // 추정 오차 공분산
+  private Q: number; // 프로세스 노이즈 공분산
+  private R: number; // 측정 노이즈 공분산
+  private dt: number; // 샘플링 주기
+
+  constructor(initialValue: number, dt: number = SAMPLING_PERIOD) {
+    this.x = initialValue;
+    this.P = 1.0; // 초기 공분산
+    this.Q = 0.01; // 프로세스 노이즈 (작을수록 신뢰)
+    this.R = 0.1; // 측정 노이즈 (작을수록 측정값 신뢰)
+    this.dt = dt;
+  }
+
+  // 칼만 필터 업데이트
+  update(measurement: number): number {
+    // 예측 단계 (Prediction)
+    // 상태는 거의 변하지 않는다고 가정 (x_k = x_{k-1})
+    const x_pred = this.x;
+    const P_pred = this.P + this.Q;
+
+    // 업데이트 단계 (Update)
+    const K = P_pred / (P_pred + this.R); // 칼만 게인
+    this.x = x_pred + K * (measurement - x_pred);
+    this.P = (1 - K) * P_pred;
+
+    return this.x;
+  }
+
+  // 현재 추정값 반환
+  getValue(): number {
+    return this.x;
+  }
+
+  // 필터 리셋
+  reset(newValue: number) {
+    this.x = newValue;
+    this.P = 1.0;
+  }
+}
+
 export const WorkingScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
   const socketRef = useRef<Socket.Socket | null>(null);
@@ -26,10 +77,43 @@ export const WorkingScreen = () => {
   const isConnectedRef = useRef<boolean>(false);
   const failureHandledRef = useRef<boolean>(false);
   const alertShowingRef = useRef<boolean>(false);
+  const kalmanFilterRef = useRef<KalmanFilter1D | null>(null);
+  const warningStartTimeRef = useRef<number | null>(null);
+  const warningLoggedRef = useRef<boolean>(false);
   const [rD, setRD] = useState<number | null>(null);
   const [pedestrianAngle, setPedestrianAngle] = useState<number | null>(null);
   const [isWarning, setIsWarning] = useState<boolean>(false);
   const [isRedBackground, setIsRedBackground] = useState<boolean>(false);
+
+  // 경고 로그 저장 함수
+  const saveWarningLog = async (distance: number) => {
+    try {
+      const now = new Date();
+      const log: WarningLog = {
+        id: `${now.getTime()}-${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: now.toISOString(),
+        distance: distance,
+        date: now.toLocaleDateString("ko-KR", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }),
+        time: now.toLocaleTimeString("ko-KR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }),
+      };
+
+      const existingLogsJson = await AsyncStorage.getItem(WARNING_LOGS_KEY);
+      const existingLogs = existingLogsJson ? JSON.parse(existingLogsJson) : [];
+      existingLogs.push(log);
+      await AsyncStorage.setItem(WARNING_LOGS_KEY, JSON.stringify(existingLogs));
+      console.log("경고 로그 저장됨:", log);
+    } catch (error) {
+      console.error("경고 로그 저장 실패:", error);
+    }
+  };
 
   useEffect(() => {
     // TCP 소켓 연결
@@ -40,60 +124,69 @@ export const WorkingScreen = () => {
     failureHandledRef.current = false;
     alertShowingRef.current = false;
     isConnectedRef.current = false;
+    kalmanFilterRef.current = null; // 칼만 필터 리셋
+    warningStartTimeRef.current = null;
+    warningLoggedRef.current = false;
 
     const handleConnectionFailure = () => {
-      if (!failureHandledRef.current && !alertShowingRef.current) {
-        failureHandledRef.current = true;
-        alertShowingRef.current = true;
-        
-        // 소켓 리스너 제거 및 종료
-        if (socketRef.current) {
-          socketRef.current.removeAllListeners("data");
-          socketRef.current.removeAllListeners("error");
-          socketRef.current.removeAllListeners("close");
-          socketRef.current.destroy();
-          socketRef.current = null;
-        }
-        
-        // console.error("연결 실패 처리 시작");
-        Alert.alert("서버 연결 실패했습니다", "서버와의 연결이 끊어졌습니다.", [
-          {
-            text: "확인",
-            onPress: () => {
-              alertShowingRef.current = false;
-              navigation.navigate(HomeRoutes.HOME);
-            },
-          },
-        ]);
+      // 이미 처리 중이거나 Alert가 표시 중이면 무시
+      if (failureHandledRef.current || alertShowingRef.current) {
+        return;
       }
+      
+      failureHandledRef.current = true;
+      alertShowingRef.current = true;
+      
+      // 소켓 리스너 제거 및 종료
+      if (socketRef.current) {
+        socketRef.current.removeAllListeners("data");
+        socketRef.current.removeAllListeners("error");
+        socketRef.current.removeAllListeners("close");
+        socketRef.current.destroy();
+        socketRef.current = null;
+      }
+      
+      // console.error("연결 실패 처리 시작");
+      Alert.alert("서버 연결 실패했습니다", "서버와의 연결이 끊어졌습니다.", [
+        {
+          text: "확인",
+          onPress: () => {
+            alertShowingRef.current = false;
+            navigation.navigate(HomeRoutes.HOME);
+          },
+        },
+      ]);
     };
 
     const handleDisconnection = () => {
-      if (isConnectedRef.current && !failureHandledRef.current && !alertShowingRef.current) {
-        // 연결 후 끊어진 경우
-        failureHandledRef.current = true;
-        alertShowingRef.current = true;
-        
-        // 소켓 리스너 제거 및 종료
-        if (socketRef.current) {
-          socketRef.current.removeAllListeners("data");
-          socketRef.current.removeAllListeners("error");
-          socketRef.current.removeAllListeners("close");
-          socketRef.current.destroy();
-          socketRef.current = null;
-        }
-        
-        // console.error("작업 중 연결 끊김");
-        Alert.alert("연결이 끊어졌습니다", "서버와의 연결이 끊어졌습니다. 홈으로 돌아갑니다.", [
-          {
-            text: "확인",
-            onPress: () => {
-              alertShowingRef.current = false;
-              navigation.navigate(HomeRoutes.HOME);
-            },
-          },
-        ]);
+      // 이미 처리 중이거나 Alert가 표시 중이면 무시
+      if (!isConnectedRef.current || failureHandledRef.current || alertShowingRef.current) {
+        return;
       }
+      
+      // 연결 후 끊어진 경우
+      failureHandledRef.current = true;
+      alertShowingRef.current = true;
+      
+      // 소켓 리스너 제거 및 종료
+      if (socketRef.current) {
+        socketRef.current.removeAllListeners("data");
+        socketRef.current.removeAllListeners("error");
+        socketRef.current.removeAllListeners("close");
+        socketRef.current.destroy();
+        socketRef.current = null;
+      }
+      
+      // console.error("작업 중 연결 끊김");
+      Alert.alert("연결이 끊어졌습니다", "서버와의 연결이 끊어졌습니다. 홈으로 돌아갑니다.", [
+        {
+          text: "확인",
+          onPress: () => {
+            alertShowingRef.current = false;
+            navigation.navigate(HomeRoutes.HOME);
+          },
+        },
+      ]);
     };
     
     try {
@@ -132,7 +225,14 @@ export const WorkingScreen = () => {
           // rD 값 추출 (rD, rD값, distance 등 다양한 필드명 가능)
           const distance = parsed.rD || parsed.rD값 || parsed.distance || parsed.rD_value;
           if (typeof distance === "number") {
-            setRD(distance);
+            // 칼만 필터 초기화 (첫 번째 측정값인 경우)
+            if (kalmanFilterRef.current === null) {
+              kalmanFilterRef.current = new KalmanFilter1D(distance, SAMPLING_PERIOD);
+            }
+            
+            // 칼만 필터를 통해 거리값 필터링
+            const filteredDistance = kalmanFilterRef.current.update(distance);
+            setRD(filteredDistance);
           }
         } catch (e) {
           // JSON이 아니면 그대로 출력
@@ -161,12 +261,18 @@ export const WorkingScreen = () => {
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
         }
+        // 이미 처리 중이면 무시
+        if (failureHandledRef.current || alertShowingRef.current) {
+          return;
+        }
         // 연결 성공하지 않은 경우 실패 처리
-        if (!isConnectedRef.current && !failureHandledRef.current && !alertShowingRef.current) {
+        if (!isConnectedRef.current) {
           setTimeout(() => {
-            handleConnectionFailure();
+            if (!failureHandledRef.current && !alertShowingRef.current) {
+              handleConnectionFailure();
+            }
           }, 100);
-        } else if (isConnectedRef.current && !failureHandledRef.current && !alertShowingRef.current) {
+        } else {
           // 연결 후 끊어진 경우
           handleDisconnection();
         }
@@ -198,10 +304,15 @@ export const WorkingScreen = () => {
         alertShowingRef.current = false;
         failureHandledRef.current = false;
         isConnectedRef.current = false;
+        kalmanFilterRef.current = null; // 칼만 필터 리셋
+        warningStartTimeRef.current = null;
+        warningLoggedRef.current = false;
       };
     } catch (error) {
       // console.error("TCP 소켓 생성 실패:", error);
-      handleConnectionFailure();
+      if (!failureHandledRef.current && !alertShowingRef.current) {
+        handleConnectionFailure();
+      }
     }
   }, [navigation]);
 
@@ -253,9 +364,29 @@ export const WorkingScreen = () => {
   // 보행자는 항상 정중앙 앞에서 나타나므로 각도 설정 불필요
   // 이 useEffect는 제거 가능하지만 호환성을 위해 유지
 
-  // 거리가 3미터 이내인지 확인
+  // 거리가 3미터 이내인지 확인 및 경고 로그 저장
   useEffect(() => {
-    setIsWarning(rD !== null && rD <= 3);
+    const isWithin3m = rD !== null && rD <= 3;
+    setIsWarning(isWithin3m);
+
+    if (isWithin3m) {
+      // 경고 시작 시간 기록
+      if (warningStartTimeRef.current === null) {
+        warningStartTimeRef.current = Date.now();
+        warningLoggedRef.current = false;
+      } else {
+        // 경고가 1초 이상 지속되었고 아직 로그를 저장하지 않았다면
+        const duration = Date.now() - warningStartTimeRef.current;
+        if (duration >= WARNING_DURATION_THRESHOLD && !warningLoggedRef.current && rD !== null) {
+          saveWarningLog(rD);
+          warningLoggedRef.current = true;
+        }
+      }
+    } else {
+      // 경고가 해제되면 리셋
+      warningStartTimeRef.current = null;
+      warningLoggedRef.current = false;
+    }
   }, [rD]);
 
   // 경고 상태일 때 배경색 깜빡이기 (1초 단위)
