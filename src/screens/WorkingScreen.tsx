@@ -5,9 +5,14 @@ import { HomeRoutes } from "../navigations/routes";
 import { HomeNavigation } from "../navigations/types";
 import { BLACK, WHITE, GRAY, RED } from "../color";
 import Socket from "react-native-tcp-socket";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { WarningLog } from "../components/LogCard/LogCard";
 
 const BORDER_WIDTH = 0.2;
 const SOCKET_PORT = 9000;
+const WARNING_LOGS_KEY = "@warning_logs";
+const WARNING_THRESHOLD_DISTANCE = 3; // 3미터
+const WARNING_MIN_DURATION = 1000; // 1초 (밀리초)
 
 // 원의 반지름 (픽셀)
 const CIRCLE3_RADIUS = 300; // 중간 원 (3m) - 범위 확장
@@ -39,6 +44,11 @@ export const WorkingScreen = () => {
     uncertainty: number;
   } | null>(null);
 
+  // 3m 이내 경고 로깅 관련 상태
+  const warningEnterTimeRef = useRef<number | null>(null); // 3m 이내 진입 시간
+  const warningStartTimeRef = useRef<number | null>(null); // 1초 이상 지속된 시점 (로그 시작 시간)
+  const warningCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null); // 1초 체크용 타임아웃
+
   useEffect(() => {
     const socketHost = (route.params as { socketHost: string })?.socketHost || "192.168.50.1";
     
@@ -56,6 +66,7 @@ export const WorkingScreen = () => {
         failureHandledRef.current = true;
         alertShowingRef.current = true;
         alertRef.current = true;
+        isConnectedRef.current = false;
         
         // 소켓 리스너 제거 및 종료
         if (socketRef.current) {
@@ -65,6 +76,14 @@ export const WorkingScreen = () => {
           socketRef.current.destroy();
           socketRef.current = null;
         }
+        
+        // 로깅 상태 리셋
+        if (warningCheckTimeoutRef.current) {
+          clearTimeout(warningCheckTimeoutRef.current);
+          warningCheckTimeoutRef.current = null;
+        }
+        warningEnterTimeRef.current = null;
+        warningStartTimeRef.current = null;
         
         // 알람 표시
         Alert.alert("서버 연결 실패했습니다", "서버와의 연결이 끊어졌습니다.", [
@@ -86,6 +105,7 @@ export const WorkingScreen = () => {
         failureHandledRef.current = true;
         alertShowingRef.current = true;
         alertRef.current = true;
+        isConnectedRef.current = false;
         
         // 소켓 리스너 제거 및 종료
         if (socketRef.current) {
@@ -95,6 +115,14 @@ export const WorkingScreen = () => {
           socketRef.current.destroy();
           socketRef.current = null;
         }
+        
+        // 로깅 상태 리셋
+        if (warningCheckTimeoutRef.current) {
+          clearTimeout(warningCheckTimeoutRef.current);
+          warningCheckTimeoutRef.current = null;
+        }
+        warningEnterTimeRef.current = null;
+        warningStartTimeRef.current = null;
         
         // 알람 표시
         Alert.alert("연결이 끊어졌습니다", "서버와의 연결이 끊어졌습니다. 홈으로 돌아갑니다.", [
@@ -171,6 +199,11 @@ export const WorkingScreen = () => {
       };
 
       const handleData = (data: string | Buffer) => {
+        // 연결 상태 확인
+        if (!isConnectedRef.current) {
+          return;
+        }
+        
         const dataString = data.toString();
         console.log("받은 데이터:", dataString);
         // JSON 데이터인 경우 파싱 시도
@@ -209,6 +242,18 @@ export const WorkingScreen = () => {
       const handleClose = () => {
         console.log("소켓 연결 종료");
         console.log("종료 시간:", new Date().toISOString());
+        
+        // 연결 상태를 즉시 false로 설정
+        isConnectedRef.current = false;
+        
+        // 로깅 상태 리셋
+        if (warningCheckTimeoutRef.current) {
+          clearTimeout(warningCheckTimeoutRef.current);
+          warningCheckTimeoutRef.current = null;
+        }
+        warningEnterTimeRef.current = null;
+        warningStartTimeRef.current = null;
+        
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
         }
@@ -217,7 +262,7 @@ export const WorkingScreen = () => {
           setTimeout(() => {
             handleConnectionFailure();
           }, 100);
-        } else if (isConnectedRef.current && !failureHandledRef.current && !alertShowingRef.current) {
+        } else if (!failureHandledRef.current && !alertShowingRef.current) {
           // 연결 후 끊어진 경우
           handleDisconnection();
         }
@@ -251,6 +296,13 @@ export const WorkingScreen = () => {
         isConnectedRef.current = false;
         alertRef.current = false;
         kalmanStateRef.current = null;
+        // 경고 로깅 상태 리셋
+        if (warningCheckTimeoutRef.current) {
+          clearTimeout(warningCheckTimeoutRef.current);
+          warningCheckTimeoutRef.current = null;
+        }
+        warningEnterTimeRef.current = null;
+        warningStartTimeRef.current = null;
       };
     } catch (error) {
       // console.error("TCP 소켓 생성 실패:", error);
@@ -267,6 +319,9 @@ export const WorkingScreen = () => {
       {
         text: "확인",
         onPress: () => {
+          // 연결 상태 먼저 false로 설정
+          isConnectedRef.current = false;
+          
           // 소켓 연결 완전히 종료
           if (socketRef.current) {
             console.log("종료 확인 - 소켓 연결 종료");
@@ -286,9 +341,15 @@ export const WorkingScreen = () => {
           // 상태 리셋
           alertShowingRef.current = false;
           failureHandledRef.current = false;
-          isConnectedRef.current = false;
           alertRef.current = false;
           kalmanStateRef.current = null;
+          // 경고 로깅 상태 리셋
+          if (warningCheckTimeoutRef.current) {
+            clearTimeout(warningCheckTimeoutRef.current);
+            warningCheckTimeoutRef.current = null;
+          }
+          warningEnterTimeRef.current = null;
+          warningStartTimeRef.current = null;
           navigation.navigate(HomeRoutes.HOME);
         },
       },
@@ -305,10 +366,108 @@ export const WorkingScreen = () => {
     return () => backHandler.remove();
   }, []);
 
-  // 거리가 3미터 이내인지 확인 (필터링된 값 사용)
+  // 로깅 상태 리셋 함수
+  const resetWarningLogging = () => {
+    if (warningCheckTimeoutRef.current) {
+      clearTimeout(warningCheckTimeoutRef.current);
+      warningCheckTimeoutRef.current = null;
+    }
+    warningEnterTimeRef.current = null;
+    warningStartTimeRef.current = null;
+  };
+
+  // 거리가 3미터 이내인지 확인 및 로깅 처리 (필터링된 값 사용)
   useEffect(() => {
-    setIsWarning(filteredRD !== null && filteredRD <= 3);
-  }, [filteredRD]);
+    // 연결이 끊겨있으면 로깅 중단 및 상태 리셋
+    if (!isConnectedRef.current) {
+      setIsWarning(false);
+      resetWarningLogging();
+      return;
+    }
+
+    const isWithin3m = filteredRD !== null && filteredRD <= WARNING_THRESHOLD_DISTANCE;
+    setIsWarning(isWithin3m);
+
+    if (isWithin3m) {
+      // 3m 이내 진입 (연결 상태 확인)
+      if (!isConnectedRef.current) {
+        resetWarningLogging();
+        return;
+      }
+
+      if (warningEnterTimeRef.current === null) {
+        // 처음 진입한 경우
+        warningEnterTimeRef.current = Date.now();
+        
+        // 1초 후에 로그 시작 시간 기록
+        warningCheckTimeoutRef.current = setTimeout(() => {
+          // 연결 상태 재확인
+          if (!isConnectedRef.current) {
+            resetWarningLogging();
+            return;
+          }
+          if (warningEnterTimeRef.current !== null) {
+            // 여전히 3m 이내에 있으면 로그 시작 시간 기록
+            warningStartTimeRef.current = Date.now();
+          }
+        }, WARNING_MIN_DURATION);
+      }
+    } else {
+      // 3m 이내에서 벗어남
+      if (warningStartTimeRef.current !== null && isConnectedRef.current) {
+        // 1초 이상 지속되었던 경우 로그 저장 (연결 상태 확인)
+        const duration = (Date.now() - warningStartTimeRef.current) / 1000; // 초 단위
+        const exitDistance = filteredRD !== null ? filteredRD : rD;
+        
+        if (exitDistance !== null) {
+          saveWarningLog(exitDistance, duration);
+        }
+      }
+      
+      // 상태 초기화
+      resetWarningLogging();
+    }
+
+    // 클린업 함수
+    return () => {
+      if (warningCheckTimeoutRef.current) {
+        clearTimeout(warningCheckTimeoutRef.current);
+      }
+    };
+  }, [filteredRD, rD]);
+
+  // 경고 로그 저장 함수
+  const saveWarningLog = async (distance: number, duration: number) => {
+    try {
+      const now = new Date();
+      const timestamp = now.toISOString();
+      const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+
+      const newLog: WarningLog = {
+        id: `${timestamp}-${Math.random().toString(36).substr(2, 9)}`,
+        timestamp,
+        distance,
+        date,
+        time,
+        duration,
+      };
+
+      // 기존 로그 불러오기
+      const logsJson = await AsyncStorage.getItem(WARNING_LOGS_KEY);
+      const logs: WarningLog[] = logsJson ? JSON.parse(logsJson) : [];
+      
+      // 새 로그 추가
+      logs.push(newLog);
+      
+      // 저장
+      await AsyncStorage.setItem(WARNING_LOGS_KEY, JSON.stringify(logs));
+      
+      console.log("경고 로그 저장:", { distance, duration });
+    } catch (error) {
+      console.error("경고 로그 저장 실패:", error);
+    }
+  };
 
   // 경고 상태일 때 배경색 깜빡이기 (1초 단위)
   useEffect(() => {

@@ -74,11 +74,12 @@ const LogScreen = () => {
 
     try {
       // CSV 헤더
-      const csvHeader = "날짜,시간,거리(m),타임스탬프\n";
+      const csvHeader = "날짜,시간,거리(m),지속시간(초),타임스탬프\n";
       
       // CSV 데이터 생성
       const csvRows = logs.map((log) => {
-        return `${log.date},${log.time},${log.distance.toFixed(2)},${log.timestamp}`;
+        const duration = log.duration !== undefined ? log.duration.toFixed(1) : "";
+        return `${log.date},${log.time},${log.distance.toFixed(2)},${duration},${log.timestamp}`;
       });
       
       const csvContent = csvHeader + csvRows.join("\n");

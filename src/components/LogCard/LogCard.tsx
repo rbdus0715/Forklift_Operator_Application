@@ -7,6 +7,7 @@ export interface WarningLog {
   distance: number;
   date: string;
   time: string;
+  duration?: number; // 지속 시간 (초)
 }
 
 interface LogCardProps {
@@ -19,6 +20,9 @@ const LogCard = ({ log }: LogCardProps) => {
       <View style={styles.cardLeft}>
         <Text style={styles.warningText}>⚠️ 작업자 경고</Text>
         <Text style={styles.distanceText}>거리: {log.distance.toFixed(2)}m</Text>
+        {log.duration !== undefined && (
+          <Text style={styles.durationText}>지속 시간: {log.duration.toFixed(1)}초</Text>
+        )}
         <Text style={styles.dateText}>{log.date}</Text>
         <Text style={styles.timeText}>{log.time}</Text>
       </View>
@@ -51,6 +55,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     color: BLACK,
+    marginBottom: 4,
+  },
+  durationText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: RED,
     marginBottom: 4,
   },
   dateText: {
