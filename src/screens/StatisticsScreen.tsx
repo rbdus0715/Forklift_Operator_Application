@@ -12,6 +12,7 @@ import { useFontSize } from "../contexts/FontSizeContext";
 const ALL_LOGS_KEY = "@all_logs"; // 모든 거리 데이터 로그
 const WARNING_LOGS_KEY = "@warning_logs"; // 경고 로그
 const OPERATING_SESSIONS_KEY = "@operating_sessions"; // 운행 세션 (시작/종료 시간)
+const SPEED_VIOLATION_COUNT_KEY = "@speed_violation_count"; // 과속 횟수 (날짜별)
 const screenWidth = Dimensions.get("window").width;
 
 const StatisticsScreen = () => {
@@ -21,6 +22,7 @@ const StatisticsScreen = () => {
   const [logs, setLogs] = useState<WarningLog[]>([]);
   const [warningLogs, setWarningLogs] = useState<WarningLog[]>([]);
   const [operatingSessions, setOperatingSessions] = useState<Array<{ id: string; date: string; startTime: number; endTime: number | null }>>([]);
+  const [speedViolations, setSpeedViolations] = useState<{ [date: string]: number }>({});
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date();
@@ -76,11 +78,35 @@ const StatisticsScreen = () => {
       } else {
         setOperatingSessions([]);
       }
+
+      // 과속 횟수 불러오기
+      const violationsJson = await AsyncStorage.getItem(SPEED_VIOLATION_COUNT_KEY);
+      if (violationsJson) {
+        try {
+          const parsed = JSON.parse(violationsJson);
+          // 숫자로 저장된 기존 데이터인 경우 빈 객체로 초기화
+          if (typeof parsed === "number") {
+            setSpeedViolations({});
+            console.log("통계 화면 - 기존 숫자 데이터를 객체로 변환");
+          } else if (typeof parsed === "object" && parsed !== null) {
+            setSpeedViolations(parsed);
+            console.log("통계 화면 - 과속 횟수 데이터:", parsed);
+          } else {
+            setSpeedViolations({});
+          }
+        } catch (e) {
+          console.error("통계 화면 - 과속 횟수 파싱 실패:", e);
+          setSpeedViolations({});
+        }
+      } else {
+        setSpeedViolations({});
+      }
     } catch (error) {
       console.error("로그 불러오기 실패:", error);
       setLogs([]);
       setWarningLogs([]);
       setOperatingSessions([]);
+      setSpeedViolations({});
     }
   };
 
@@ -209,8 +235,10 @@ const StatisticsScreen = () => {
     return warningLogs.filter((log) => log.date === todayDate);
   }, [warningLogs, todayDate]);
 
-  // 오늘 과속 횟수 (아직 처리 안 함 - 0으로 고정)
-  const speedViolationCount = 0;
+  // 오늘 과속 횟수
+  const speedViolationCount = useMemo(() => {
+    return speedViolations[todayDate] || 0;
+  }, [speedViolations, todayDate]);
 
   // 선택된 날짜의 3m 이내 경고 횟수 (경고 로그에서 가져오기)
   const warningCount = useMemo(() => {

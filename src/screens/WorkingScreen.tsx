@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Pressable, Alert, BackHandler, Dimensions } fro
 import { useNavigation, useRoute, CommonActions } from "@react-navigation/native";
 import { HomeRoutes } from "../navigations/routes";
 import { HomeNavigation } from "../navigations/types";
-import { BLACK, WHITE, GRAY, RED } from "../color";
+import { BLACK, WHITE, GRAY, RED, YELLOW } from "../color";
 import Socket from "react-native-tcp-socket";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { WarningLog } from "../components/LogCard/LogCard";
@@ -14,9 +14,11 @@ const SOCKET_PORT = 9000;
 const WARNING_LOGS_KEY = "@warning_logs";
 const ALL_LOGS_KEY = "@all_logs"; // 모든 거리 데이터 로그
 const OPERATING_SESSIONS_KEY = "@operating_sessions"; // 운행 세션 (시작/종료 시간)
+const SPEED_VIOLATION_COUNT_KEY = "@speed_violation_count"; // 과속 횟수
 const WARNING_THRESHOLD_DISTANCE = 3; // 3미터
 const WARNING_MIN_DURATION = 1000; // 1초 (밀리초)
 const LOG_INTERVAL = 1000; // 모든 로그 저장 간격 (1초)
+const SPEED_VIOLATION_CHECK_INTERVAL = 3000; // 과속 체크 간격 (3초)
 
 // 원의 반지름 (픽셀)
 const CIRCLE3_RADIUS = 300; // 중간 원 (3m) - 범위 확장
@@ -43,6 +45,15 @@ export const WorkingScreen = () => {
   const [pedestrianAngle, setPedestrianAngle] = useState<number | null>(null);
   const [isWarning, setIsWarning] = useState<boolean>(false);
   const [isRedBackground, setIsRedBackground] = useState<boolean>(false);
+  const [speed, setSpeed] = useState<number | null>(null);
+  const [isSpeedWarning, setIsSpeedWarning] = useState<boolean>(false);
+  const [isYellowBackground, setIsYellowBackground] = useState<boolean>(false);
+  
+  // 속도 경고 타이머 관련
+  const speedWarningTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const prevSpeedRef = useRef<number | null>(null);
+  const speedRef = useRef<number | null>(null); // 최신 speed 값 추적
+  const lastViolationCountTimeRef = useRef<number>(0); // 마지막 과속 횟수 증가 시간
   
   // 칼만 필터 상태
   const kalmanStateRef = useRef<{
@@ -249,6 +260,13 @@ export const WorkingScreen = () => {
             // 마지막 거리 값 저장 (주기적 로그 저장에서 사용)
             lastDistanceRef.current = filtered;
           }
+          
+          // speed 값 추출 (speed, Speed, speed값 등 다양한 필드명 가능)
+          const speedValue = parsed.speed || parsed.Speed || parsed.speed값 || parsed.speed_value || parsed.speedValue;
+          if (typeof speedValue === "number" && !isNaN(speedValue) && speedValue >= 0) {
+            setSpeed(speedValue);
+            speedRef.current = speedValue; // 최신 speed 값 추적
+          }
         } catch (e) {
           // JSON이 아니면 그대로 출력
         }
@@ -333,6 +351,11 @@ export const WorkingScreen = () => {
         if (logIntervalRef.current) {
           clearInterval(logIntervalRef.current);
           logIntervalRef.current = null;
+        }
+        // 속도 경고 타이머 정리
+        if (speedWarningTimerRef.current) {
+          clearTimeout(speedWarningTimerRef.current);
+          speedWarningTimerRef.current = null;
         }
         lastLogTimeRef.current = 0;
         sessionStartTimeRef.current = null;
@@ -559,6 +582,19 @@ export const WorkingScreen = () => {
     }
   };
 
+  // 과속 횟수 저장 함수 (날짜별로 저장)
+  const saveSpeedViolationCount = async (violations: { [date: string]: number }): Promise<void> => {
+    try {
+      await AsyncStorage.setItem(SPEED_VIOLATION_COUNT_KEY, JSON.stringify(violations));
+      const now = new Date();
+      const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      console.log("과속 횟수 저장 성공:", { date, count: violations[date] });
+    } catch (error) {
+      console.error("과속 횟수 저장 실패:", error);
+      throw error;
+    }
+  };
+
   // 경고 로그 저장 함수
   const saveWarningLog = async (distance: number, duration: number): Promise<void> => {
     try {
@@ -613,6 +649,121 @@ export const WorkingScreen = () => {
     return () => clearInterval(interval);
   }, [isWarning]);
 
+  // 속도 경고 확인 (속도가 3 이상일 때)
+  useEffect(() => {
+    if (!isConnectedRef.current) {
+      setIsSpeedWarning(false);
+      setIsYellowBackground(false);
+      prevSpeedRef.current = null;
+      speedRef.current = null;
+      // 타이머 정리
+      if (speedWarningTimerRef.current) {
+        clearTimeout(speedWarningTimerRef.current);
+        speedWarningTimerRef.current = null;
+      }
+      return;
+    }
+
+    const isOverSpeed = speed !== null && speed >= 3;
+    const wasOverSpeed = prevSpeedRef.current !== null && prevSpeedRef.current >= 3;
+    
+    setIsSpeedWarning(isOverSpeed);
+    
+    if (isOverSpeed) {
+      // 속도가 3 이상이면 즉시 노란색으로 변경
+      setIsYellowBackground(true);
+      setIsSpeedWarning(true);
+      
+      // 과속이 시작될 때만 +1 (이전에 과속이 아니었는데 지금 과속이면)
+      // 과속 상태가 계속 유지되는 동안에는 +1 하지 않음
+      if (!wasOverSpeed) {
+        // 날짜별 과속 횟수 불러와서 증가
+        AsyncStorage.getItem(SPEED_VIOLATION_COUNT_KEY)
+          .then((violationsJson) => {
+            const nowDate = new Date();
+            const date = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, "0")}-${String(nowDate.getDate()).padStart(2, "0")}`;
+            let violations: { [date: string]: number } = {};
+            
+            if (violationsJson) {
+              try {
+                const parsed = JSON.parse(violationsJson);
+                // 숫자로 저장된 기존 데이터인 경우 빈 객체로 초기화
+                if (typeof parsed === "number") {
+                  violations = {};
+                } else if (typeof parsed === "object" && parsed !== null) {
+                  violations = parsed;
+                }
+              } catch (e) {
+                // 파싱 실패 시 빈 객체로 시작
+                violations = {};
+              }
+            }
+            
+            const currentCount = violations[date] || 0;
+            violations[date] = currentCount + 1;
+            lastViolationCountTimeRef.current = Date.now(); // 마지막 증가 시간 업데이트
+            console.log("과속 횟수 증가 (시작):", violations[date]);
+            return saveSpeedViolationCount(violations);
+          })
+          .catch((error) => {
+            console.error("과속 횟수 저장 실패:", error);
+          });
+      }
+      
+      // 과속이 시작될 때만 2초 동안 노란색 유지 (타이머 설정)
+      // 과속 상태가 계속 유지되는 동안에는 타이머를 재설정하지 않음
+      if (!wasOverSpeed) {
+        // 과속이 시작될 때만 타이머 설정
+        if (speedWarningTimerRef.current) {
+          clearTimeout(speedWarningTimerRef.current);
+        }
+        speedWarningTimerRef.current = setTimeout(() => {
+          // 2초 후에도 여전히 과속이면 계속 유지, 아니면 꺼짐
+          if (speedRef.current === null || speedRef.current < 3) {
+            setIsYellowBackground(false);
+            setIsSpeedWarning(false);
+          }
+          speedWarningTimerRef.current = null;
+        }, 2000);
+      }
+    } else {
+      // 속도가 3 미만이면
+      if (wasOverSpeed) {
+        // 이전에 속도가 3 이상이었고 지금 3 미만이면 2초 타이머 시작
+        // 기존 타이머가 있으면 취소
+        if (speedWarningTimerRef.current) {
+          clearTimeout(speedWarningTimerRef.current);
+        }
+        // 2초 후에 검정색으로 변경
+        speedWarningTimerRef.current = setTimeout(() => {
+          setIsYellowBackground(false);
+          setIsSpeedWarning(false);
+          speedWarningTimerRef.current = null;
+        }, 2000);
+      } else {
+        // 처음부터 속도가 3 미만이면 즉시 검정색으로
+        setIsYellowBackground(false);
+        // 기존 타이머가 있으면 취소
+        if (speedWarningTimerRef.current) {
+          clearTimeout(speedWarningTimerRef.current);
+          speedWarningTimerRef.current = null;
+        }
+      }
+    }
+    
+    // 현재 속도 값을 이전 값과 최신 값으로 저장
+    prevSpeedRef.current = speed;
+    speedRef.current = speed;
+    
+    // cleanup 함수
+    return () => {
+      if (speedWarningTimerRef.current) {
+        clearTimeout(speedWarningTimerRef.current);
+        speedWarningTimerRef.current = null;
+      }
+    };
+  }, [speed]);
+
   // 보행자 위치 계산 - 정중앙 앞에서 나타남 (필터링된 값 사용)
   const getPedestrianPosition = () => {
     const distance = filteredRD !== null ? filteredRD : rD;
@@ -641,8 +792,16 @@ export const WorkingScreen = () => {
     top: RADAR_CENTER_Y,
   };
 
+  // 3미터 경고가 우선순위가 높으므로, 3미터 경고가 활성화되면 과속 경고는 표시하지 않음
+  const shouldShowSpeedWarning = isSpeedWarning && !isWarning;
+  const shouldShowYellowBackground = isYellowBackground && !isWarning;
+
   return (
-    <View style={[styles.container, isRedBackground && styles.redBackground]}>
+    <View style={[
+      styles.container, 
+      isRedBackground && styles.redBackground,
+      shouldShowYellowBackground && styles.yellowBackground
+    ]}>
       {/* 헤더 */}
       <View style={styles.header}>
         <Pressable style={styles.backButton} onPress={handleExit}>
@@ -654,11 +813,18 @@ export const WorkingScreen = () => {
         </Pressable>
       </View>
 
-      {/* 경고 메시지 (3미터 이내일 때) */}
+      {/* 경고 메시지 (3미터 이내일 때 - 최우선) */}
       {isWarning && (
         <View style={styles.warningContainer}>
           <Text style={[styles.warningText, isLarge && styles.warningTextLarge]}>작업자</Text>
           <Text style={[styles.warningText, isLarge && styles.warningTextLarge]}>3미터 이내</Text>
+        </View>
+      )}
+
+      {/* 속도 경고 메시지 (속도 3 이상일 때, 3미터 경고가 없을 때만) */}
+      {shouldShowSpeedWarning && (
+        <View style={styles.warningContainer}>
+          <Text style={[styles.warningText, isLarge && styles.warningTextLarge]}>과속중</Text>
         </View>
       )}
 
@@ -719,6 +885,9 @@ const styles = StyleSheet.create({
   redBackground: {
     backgroundColor: RED,
   },
+  yellowBackground: {
+    backgroundColor: YELLOW,
+  },
   warningContainer: {
     position: "absolute",
     top: 120, // 상단에 배치
@@ -734,6 +903,9 @@ const styles = StyleSheet.create({
     color: WHITE,
     textAlign: "center",
     marginVertical: 8,
+    textShadowColor: BLACK,
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
   },
   header: {
     flexDirection: "row",
