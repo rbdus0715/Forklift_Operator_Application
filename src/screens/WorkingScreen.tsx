@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Alert, BackHandler } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { HomeRoutes } from "../navigations/routes";
@@ -10,13 +10,18 @@ const BORDER_WIDTH = 0.2;
 const SOCKET_HOST = "192.168.50.1";
 const SOCKET_PORT = 9000;
 
+// 원의 반지름 (픽셀)
+const CIRCLE3_RADIUS = 225; // 중간 원 (3m)
+const MAX_DISTANCE = 5; // 최대 표시 거리 (미터)
+
 export const WorkingScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
   const socketRef = useRef<Socket.Socket | null>(null);
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isConnectedRef = useRef<boolean>(false);
   const failureHandledRef = useRef<boolean>(false);
-  const isMountedRef = useRef<boolean>(true);
+  const [rD, setRD] = useState<number | null>(null);
+  const [pedestrianAngle, setPedestrianAngle] = useState<number | null>(null);
 
   useEffect(() => {
     // TCP 소켓 연결
@@ -79,23 +84,24 @@ export const WorkingScreen = () => {
         handleConnectionFailure();
       }, 30000);
 
-      const handleData = (data: any) => {
-        if (!isMountedRef.current) return;
+      socket.on("data", (data) => {
         const dataString = data.toString();
         console.log("받은 데이터:", dataString);
         // JSON 데이터인 경우 파싱 시도
         try {
           const parsed = JSON.parse(dataString);
           console.log("파싱된 데이터:", parsed);
+          // rD 값 추출 (rD, rD값, distance 등 다양한 필드명 가능)
+          const distance = parsed.rD || parsed.rD값 || parsed.distance || parsed.rD_value;
+          if (typeof distance === "number") {
+            setRD(distance);
+          }
         } catch (e) {
           // JSON이 아니면 그대로 출력
         }
-      };
+      });
 
-      socket.on("data", handleData);
-
-      const handleError = (error: any) => {
-        if (!isMountedRef.current) return;
+      socket.on("error", (error) => {
         // console.error("소켓 에러 발생");
         // console.error("에러 시간:", new Date().toISOString());
         // console.error("에러 상세:", error);
@@ -109,12 +115,9 @@ export const WorkingScreen = () => {
           // 연결 후 에러인 경우
           handleDisconnection();
         }
-      };
+      });
 
-      socket.on("error", handleError);
-
-      const handleClose = () => {
-        if (!isMountedRef.current) return;
+      socket.on("close", () => {
         console.log("소켓 연결 종료");
         console.log("종료 시간:", new Date().toISOString());
         if (connectionTimeoutRef.current) {
@@ -123,32 +126,23 @@ export const WorkingScreen = () => {
         // 연결 성공하지 않은 경우 실패 처리
         if (!isConnectedRef.current && !failureHandledRef.current) {
           setTimeout(() => {
-            if (isMountedRef.current) {
-              handleConnectionFailure();
-            }
+            handleConnectionFailure();
           }, 100);
         } else if (isConnectedRef.current && !failureHandledRef.current) {
           // 연결 후 끊어진 경우
           handleDisconnection();
         }
-      };
-
-      socket.on("close", handleClose);
+      });
 
       socketRef.current = socket;
 
       // 컴포넌트 언마운트 시 연결 종료
       return () => {
-        isMountedRef.current = false;
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
-          connectionTimeoutRef.current = null;
         }
         if (socketRef.current) {
-          // 모든 이벤트 리스너 제거
-          socketRef.current.removeAllListeners("data");
-          socketRef.current.removeAllListeners("error");
-          socketRef.current.removeAllListeners("close");
+          console.log("컴포넌트 언마운트 - 소켓 연결 종료");
           socketRef.current.destroy();
           socketRef.current = null;
         }
@@ -169,18 +163,10 @@ export const WorkingScreen = () => {
         text: "확인",
         onPress: () => {
           // 소켓 연결 종료
-          isMountedRef.current = false;
           if (socketRef.current) {
-            // 모든 이벤트 리스너 제거
-            socketRef.current.removeAllListeners("data");
-            socketRef.current.removeAllListeners("error");
-            socketRef.current.removeAllListeners("close");
+            console.log("종료 확인 - 소켓 연결 종료");
             socketRef.current.destroy();
             socketRef.current = null;
-          }
-          if (connectionTimeoutRef.current) {
-            clearTimeout(connectionTimeoutRef.current);
-            connectionTimeoutRef.current = null;
           }
           navigation.navigate(HomeRoutes.HOME);
         },
@@ -197,6 +183,35 @@ export const WorkingScreen = () => {
 
     return () => backHandler.remove();
   }, []);
+
+  // 첫 번째 rD 값이 들어올 때 랜덤 방향 설정
+  useEffect(() => {
+    if (rD !== null && pedestrianAngle === null) {
+      setPedestrianAngle(Math.random() * 360);
+    }
+  }, [rD, pedestrianAngle]);
+
+  // 보행자 위치 계산
+  const getPedestrianPosition = () => {
+    if (rD === null || rD > MAX_DISTANCE || pedestrianAngle === null) {
+      return null;
+    }
+
+    // rD=3일 때 중간 원(3m)에 위치하도록 계산
+    // 중간 원 반지름: CIRCLE3_RADIUS (225px)
+    const radius = (rD / 3) * CIRCLE3_RADIUS;
+    
+    // 랜덤 각도를 라디안으로 변환
+    const angleInRadians = (pedestrianAngle * Math.PI) / 180;
+    
+    // 중심점에서 거리와 각도로 x, y 좌표 계산
+    const x = radius * Math.cos(angleInRadians);
+    const y = radius * Math.sin(angleInRadians);
+    
+    return { x, y, distance: rD };
+  };
+
+  const pedestrianPosition = getPedestrianPosition();
 
   return (
     <View style={styles.container}>
@@ -228,10 +243,27 @@ export const WorkingScreen = () => {
         {/* 거리 표시 */}
         <Text style={styles.distanceText}>3m</Text>
 
-        {/* 사용자 아이콘 (왼쪽 상단) */}
-        <View style={styles.userIcon}>
-          <Text style={styles.userIconText}>👤</Text>
-        </View>
+        {/* 보행자 마커 */}
+        {pedestrianPosition && (
+          <View
+            style={[
+              styles.pedestrianMarker,
+              {
+                transform: [
+                  { translateX: pedestrianPosition.x },
+                  { translateY: pedestrianPosition.y },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.pedestrianIcon}>
+              <Text style={styles.pedestrianIconText}>👤</Text>
+            </View>
+            <Text style={styles.pedestrianDistance}>
+              {pedestrianPosition.distance.toFixed(1)}m
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* 종료 버튼 */}
@@ -353,6 +385,39 @@ const styles = StyleSheet.create({
   },
   userIconText: {
     fontSize: 24,
+  },
+  pedestrianMarker: {
+    position: "absolute",
+    width: 50,
+    height: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    left: "50%",
+    top: "50%",
+    marginLeft: -25,
+    marginTop: -25,
+  },
+  pedestrianIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "#FF8C00",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  pedestrianIconText: {
+    fontSize: 24,
+  },
+  pedestrianDistance: {
+    position: "absolute",
+    top: -20,
+    color: RED,
+    fontSize: 12,
+    fontWeight: "600",
+    backgroundColor: BLACK,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   endButton: {
     position: "absolute",
