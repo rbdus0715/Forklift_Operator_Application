@@ -24,7 +24,7 @@ export const LoadingScreen = () => {
     const handleConnectionFailure = () => {
       if (!isConnectedRef.current && !failureHandledRef.current) {
         failureHandledRef.current = true;
-        console.error("연결 실패 처리 시작");
+        // console.error("연결 실패 처리 시작");
         Alert.alert("서버 연결 실패했습니다", "", [
           {
             text: "확인",
@@ -58,7 +58,7 @@ export const LoadingScreen = () => {
 
       // 연결 타임아웃 설정 (30초)
       connectionTimeoutRef.current = setTimeout(() => {
-        console.error("❌ 연결 타임아웃 (30초 경과)");
+        // console.error("❌ 연결 타임아웃 (30초 경과)");
         if (socketRef.current) {
           socketRef.current.destroy();
         }
@@ -66,9 +66,9 @@ export const LoadingScreen = () => {
       }, 30000);
 
       socket.on("error", (error) => {
-        console.error("❌ 소켓 에러 발생");
-        console.error("에러 시간:", new Date().toISOString());
-        console.error("에러 상세:", error);
+        // console.error("❌ 소켓 에러 발생");
+        // console.error("에러 시간:", new Date().toISOString());
+        // console.error("에러 상세:", error);
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
         }
@@ -102,7 +102,7 @@ export const LoadingScreen = () => {
         }
       };
     } catch (error) {
-      console.error("❌ TCP 소켓 생성 실패:", error);
+      // console.error("❌ TCP 소켓 생성 실패:", error);
       handleConnectionFailure();
     }
   }, [navigation, socketHost]);

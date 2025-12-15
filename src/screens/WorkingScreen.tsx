@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, Alert, BackHandler } from "react-native";
+import { View, Text, StyleSheet, Pressable, Alert, BackHandler, Dimensions } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { HomeRoutes } from "../navigations/routes";
 import { HomeNavigation } from "../navigations/types";
@@ -11,8 +11,13 @@ const SOCKET_HOST = "192.168.50.1";
 const SOCKET_PORT = 9000;
 
 // 원의 반지름 (픽셀)
-const CIRCLE3_RADIUS = 225; // 중간 원 (3m)
+const CIRCLE3_RADIUS = 300; // 중간 원 (3m) - 범위 확장
 const MAX_DISTANCE = 5; // 최대 표시 거리 (미터)
+const CENTER_OFFSET_Y = 180; // 중심점을 아래로 이동 (더 아래로)
+
+// 화면 크기 가져오기
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+const RADAR_CENTER_Y = SCREEN_HEIGHT * 0.425 + CENTER_OFFSET_Y; // 레이더 컨테이너의 중심 Y 위치
 
 export const WorkingScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
@@ -20,22 +25,42 @@ export const WorkingScreen = () => {
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isConnectedRef = useRef<boolean>(false);
   const failureHandledRef = useRef<boolean>(false);
+  const alertShowingRef = useRef<boolean>(false);
   const [rD, setRD] = useState<number | null>(null);
   const [pedestrianAngle, setPedestrianAngle] = useState<number | null>(null);
+  const [isWarning, setIsWarning] = useState<boolean>(false);
+  const [isRedBackground, setIsRedBackground] = useState<boolean>(false);
 
   useEffect(() => {
     // TCP 소켓 연결
     console.log("소켓 연결 시도:", `${SOCKET_HOST}:${SOCKET_PORT}`);
     console.log("연결 시작 시간:", new Date().toISOString());
+    
+    // 상태 리셋
+    failureHandledRef.current = false;
+    alertShowingRef.current = false;
+    isConnectedRef.current = false;
 
     const handleConnectionFailure = () => {
-      if (!failureHandledRef.current) {
+      if (!failureHandledRef.current && !alertShowingRef.current) {
         failureHandledRef.current = true;
+        alertShowingRef.current = true;
+        
+        // 소켓 리스너 제거 및 종료
+        if (socketRef.current) {
+          socketRef.current.removeAllListeners("data");
+          socketRef.current.removeAllListeners("error");
+          socketRef.current.removeAllListeners("close");
+          socketRef.current.destroy();
+          socketRef.current = null;
+        }
+        
         // console.error("연결 실패 처리 시작");
         Alert.alert("서버 연결 실패했습니다", "서버와의 연결이 끊어졌습니다.", [
           {
             text: "확인",
             onPress: () => {
+              alertShowingRef.current = false;
               navigation.navigate(HomeRoutes.HOME);
             },
           },
@@ -44,13 +69,26 @@ export const WorkingScreen = () => {
     };
 
     const handleDisconnection = () => {
-      if (isConnectedRef.current && !failureHandledRef.current) {
+      if (isConnectedRef.current && !failureHandledRef.current && !alertShowingRef.current) {
         // 연결 후 끊어진 경우
+        failureHandledRef.current = true;
+        alertShowingRef.current = true;
+        
+        // 소켓 리스너 제거 및 종료
+        if (socketRef.current) {
+          socketRef.current.removeAllListeners("data");
+          socketRef.current.removeAllListeners("error");
+          socketRef.current.removeAllListeners("close");
+          socketRef.current.destroy();
+          socketRef.current = null;
+        }
+        
         // console.error("작업 중 연결 끊김");
         Alert.alert("연결이 끊어졌습니다", "서버와의 연결이 끊어졌습니다. 홈으로 돌아갑니다.", [
           {
             text: "확인",
             onPress: () => {
+              alertShowingRef.current = false;
               navigation.navigate(HomeRoutes.HOME);
             },
           },
@@ -84,7 +122,7 @@ export const WorkingScreen = () => {
         handleConnectionFailure();
       }, 30000);
 
-      socket.on("data", (data) => {
+      const handleData = (data: string | Buffer) => {
         const dataString = data.toString();
         console.log("받은 데이터:", dataString);
         // JSON 데이터인 경우 파싱 시도
@@ -99,9 +137,9 @@ export const WorkingScreen = () => {
         } catch (e) {
           // JSON이 아니면 그대로 출력
         }
-      });
+      };
 
-      socket.on("error", (error) => {
+      const handleError = (error: Error) => {
         // console.error("소켓 에러 발생");
         // console.error("에러 시간:", new Date().toISOString());
         // console.error("에러 상세:", error);
@@ -115,24 +153,28 @@ export const WorkingScreen = () => {
           // 연결 후 에러인 경우
           handleDisconnection();
         }
-      });
+      };
 
-      socket.on("close", () => {
+      const handleClose = () => {
         console.log("소켓 연결 종료");
         console.log("종료 시간:", new Date().toISOString());
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
         }
         // 연결 성공하지 않은 경우 실패 처리
-        if (!isConnectedRef.current && !failureHandledRef.current) {
+        if (!isConnectedRef.current && !failureHandledRef.current && !alertShowingRef.current) {
           setTimeout(() => {
             handleConnectionFailure();
           }, 100);
-        } else if (isConnectedRef.current && !failureHandledRef.current) {
+        } else if (isConnectedRef.current && !failureHandledRef.current && !alertShowingRef.current) {
           // 연결 후 끊어진 경우
           handleDisconnection();
         }
-      });
+      };
+
+      socket.on("data", handleData);
+      socket.on("error", handleError);
+      socket.on("close", handleClose);
 
       socketRef.current = socket;
 
@@ -140,12 +182,22 @@ export const WorkingScreen = () => {
       return () => {
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
         }
         if (socketRef.current) {
           console.log("컴포넌트 언마운트 - 소켓 연결 종료");
+          // 모든 리스너 제거
+          socketRef.current.removeAllListeners("data");
+          socketRef.current.removeAllListeners("error");
+          socketRef.current.removeAllListeners("close");
+          // 소켓 종료
           socketRef.current.destroy();
           socketRef.current = null;
         }
+        // 리셋
+        alertShowingRef.current = false;
+        failureHandledRef.current = false;
+        isConnectedRef.current = false;
       };
     } catch (error) {
       // console.error("TCP 소켓 생성 실패:", error);
@@ -162,12 +214,26 @@ export const WorkingScreen = () => {
       {
         text: "확인",
         onPress: () => {
-          // 소켓 연결 종료
+          // 소켓 연결 완전히 종료
           if (socketRef.current) {
             console.log("종료 확인 - 소켓 연결 종료");
+            // 모든 리스너 제거
+            socketRef.current.removeAllListeners("data");
+            socketRef.current.removeAllListeners("error");
+            socketRef.current.removeAllListeners("close");
+            // 소켓 종료
             socketRef.current.destroy();
             socketRef.current = null;
           }
+          // 타임아웃 클리어
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
+          // 상태 리셋
+          alertShowingRef.current = false;
+          failureHandledRef.current = false;
+          isConnectedRef.current = false;
           navigation.navigate(HomeRoutes.HOME);
         },
       },
@@ -184,37 +250,57 @@ export const WorkingScreen = () => {
     return () => backHandler.remove();
   }, []);
 
-  // 첫 번째 rD 값이 들어올 때 랜덤 방향 설정
-  useEffect(() => {
-    if (rD !== null && pedestrianAngle === null) {
-      setPedestrianAngle(Math.random() * 360);
-    }
-  }, [rD, pedestrianAngle]);
+  // 보행자는 항상 정중앙 앞에서 나타나므로 각도 설정 불필요
+  // 이 useEffect는 제거 가능하지만 호환성을 위해 유지
 
-  // 보행자 위치 계산
+  // 거리가 3미터 이내인지 확인
+  useEffect(() => {
+    setIsWarning(rD !== null && rD <= 3);
+  }, [rD]);
+
+  // 경고 상태일 때 배경색 깜빡이기 (1초 단위)
+  useEffect(() => {
+    if (!isWarning) {
+      setIsRedBackground(false);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setIsRedBackground((prev) => !prev);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isWarning]);
+
+  // 보행자 위치 계산 - 정중앙 앞에서 나타남
   const getPedestrianPosition = () => {
-    if (rD === null || rD > MAX_DISTANCE || pedestrianAngle === null) {
+    if (rD === null || rD > MAX_DISTANCE) {
       return null;
     }
 
-    // rD=3일 때 중간 원(3m)에 위치하도록 계산
-    // 중간 원 반지름: CIRCLE3_RADIUS (225px)
-    const radius = (rD / 3) * CIRCLE3_RADIUS;
+    // 5미터일 때 위쪽, 가까워질수록 아래로, 중앙으로 이동
+    // 거리에 따라 y 위치 계산 (5m -> 위쪽, 0m -> 중앙)
+    const maxY = -CIRCLE3_RADIUS * 1.5; // 5미터일 때 위쪽 위치
+    const minY = 0; // 0미터일 때 중앙
     
-    // 랜덤 각도를 라디안으로 변환
-    const angleInRadians = (pedestrianAngle * Math.PI) / 180;
+    // 거리가 멀수록 위쪽, 가까울수록 아래쪽
+    const y = maxY + ((MAX_DISTANCE - rD) / MAX_DISTANCE) * (minY - maxY);
     
-    // 중심점에서 거리와 각도로 x, y 좌표 계산
-    const x = radius * Math.cos(angleInRadians);
-    const y = radius * Math.sin(angleInRadians);
+    // x는 항상 0 (정중앙)
+    const x = 0;
     
     return { x, y, distance: rD };
   };
 
   const pedestrianPosition = getPedestrianPosition();
 
+  // 동적 스타일 생성
+  const radarCenterStyle = {
+    top: RADAR_CENTER_Y,
+  };
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isRedBackground && styles.redBackground]}>
       {/* 헤더 */}
       <View style={styles.header}>
         <Pressable style={styles.backButton} onPress={handleExit}>
@@ -226,28 +312,37 @@ export const WorkingScreen = () => {
         </Pressable>
       </View>
 
+      {/* 경고 메시지 (3미터 이내일 때) */}
+      {isWarning && (
+        <View style={styles.warningContainer}>
+          <Text style={styles.warningText}>작업자</Text>
+          <Text style={styles.warningText}>3미터 이내</Text>
+        </View>
+      )}
+
       {/* 레이더 스타일 디스플레이 */}
       <View style={styles.radarContainer}>
         {/* 동심원들 */}
-        <View style={styles.circle1} />
-        <View style={styles.circle2} />
-        <View style={styles.circle3} />
-        <View style={styles.circle4} />
+        <View style={[styles.circle1, radarCenterStyle]} />
+        <View style={[styles.circle2, radarCenterStyle]} />
+        <View style={[styles.circle3, radarCenterStyle]} />
+        <View style={[styles.circle4, radarCenterStyle]} />
 
         {/* 수평선 */}
-        <View style={styles.horizontalLine} />
+        <View style={[styles.horizontalLine, radarCenterStyle]} />
 
         {/* 중앙 원 */}
-        <View style={styles.centerCircle} />
+        <View style={[styles.centerCircle, radarCenterStyle]} />
 
         {/* 거리 표시 */}
-        <Text style={styles.distanceText}>3m</Text>
+        <Text style={[styles.distanceText, { top: RADAR_CENTER_Y - 200 }]}>3m</Text>
 
         {/* 보행자 마커 */}
         {pedestrianPosition && (
           <View
             style={[
               styles.pedestrianMarker,
+              radarCenterStyle,
               {
                 transform: [
                   { translateX: pedestrianPosition.x },
@@ -278,6 +373,25 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: BLACK,
+  },
+  redBackground: {
+    backgroundColor: RED,
+  },
+  warningContainer: {
+    position: "absolute",
+    top: 120, // 상단에 배치
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+  },
+  warningText: {
+    fontSize: 48,
+    fontWeight: "900",
+    color: WHITE,
+    textAlign: "center",
+    marginVertical: 8,
   },
   header: {
     flexDirection: "row",
@@ -319,44 +433,58 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
+    paddingTop: CENTER_OFFSET_Y, // 중심점을 아래로 이동
   },
   circle1: {
     position: "absolute",
-    width: 150,
-    height: 150,
-    borderRadius: 75,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
     borderWidth: BORDER_WIDTH,
     borderColor: GRAY,
+    left: "50%",
+    marginLeft: -100,
+    marginTop: -100,
   },
   circle2: {
     position: "absolute",
-    width: 300,
-    height: 300,
-    borderRadius: 150,
+    width: 400,
+    height: 400,
+    borderRadius: 200,
     borderWidth: BORDER_WIDTH,
-    borderColor: RED,
+    borderColor: "#FFA500", // 3m 원 - 주황색
+    left: "50%",
+    marginLeft: -200,
+    marginTop: -200,
   },
   circle3: {
-    position: "absolute",
-    width: 450,
-    height: 450,
-    borderRadius: 250,
-    borderWidth: BORDER_WIDTH,
-    borderColor: GRAY,
-  },
-  circle4: {
     position: "absolute",
     width: 600,
     height: 600,
     borderRadius: 300,
     borderWidth: BORDER_WIDTH,
     borderColor: GRAY,
+    left: "50%",
+    marginLeft: -300,
+    marginTop: -300,
+  },
+  circle4: {
+    position: "absolute",
+    width: 800,
+    height: 800,
+    borderRadius: 400,
+    borderWidth: BORDER_WIDTH,
+    borderColor: GRAY,
+    left: "50%",
+    marginLeft: -400,
+    marginTop: -400,
   },
   horizontalLine: {
     position: "absolute",
     width: "100%",
     height: BORDER_WIDTH,
     backgroundColor: GRAY,
+    left: 0,
   },
   centerCircle: {
     width: 20,
@@ -364,6 +492,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: WHITE,
     position: "absolute",
+    left: "50%",
+    marginLeft: -10,
+    marginTop: -10,
   },
   distanceText: {
     position: "absolute",
@@ -393,7 +524,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     left: "50%",
-    top: "50%",
     marginLeft: -25,
     marginTop: -25,
   },
