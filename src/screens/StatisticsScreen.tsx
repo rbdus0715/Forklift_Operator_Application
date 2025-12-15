@@ -11,6 +11,7 @@ import { useFontSize } from "../contexts/FontSizeContext";
 
 const ALL_LOGS_KEY = "@all_logs"; // 모든 거리 데이터 로그
 const WARNING_LOGS_KEY = "@warning_logs"; // 경고 로그
+const OPERATING_SESSIONS_KEY = "@operating_sessions"; // 운행 세션 (시작/종료 시간)
 const screenWidth = Dimensions.get("window").width;
 
 const StatisticsScreen = () => {
@@ -19,6 +20,7 @@ const StatisticsScreen = () => {
   const isLarge = fontSize === "large";
   const [logs, setLogs] = useState<WarningLog[]>([]);
   const [warningLogs, setWarningLogs] = useState<WarningLog[]>([]);
+  const [operatingSessions, setOperatingSessions] = useState<Array<{ id: string; date: string; startTime: number; endTime: number | null }>>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     const today = new Date();
@@ -64,10 +66,21 @@ const StatisticsScreen = () => {
       } else {
         setWarningLogs([]);
       }
+
+      // 운행 세션 불러오기
+      const sessionsJson = await AsyncStorage.getItem(OPERATING_SESSIONS_KEY);
+      if (sessionsJson) {
+        const parsedSessions = JSON.parse(sessionsJson);
+        setOperatingSessions(parsedSessions);
+        console.log("통계 화면 - 운행 세션 개수:", parsedSessions.length);
+      } else {
+        setOperatingSessions([]);
+      }
     } catch (error) {
       console.error("로그 불러오기 실패:", error);
       setLogs([]);
       setWarningLogs([]);
+      setOperatingSessions([]);
     }
   };
 
@@ -204,28 +217,28 @@ const StatisticsScreen = () => {
     return warningLogs.filter((log) => log.date === selectedDate).length;
   }, [warningLogs, selectedDate]);
 
-  // 선택된 날짜의 운행 시간 계산 (첫 로그 ~ 마지막 로그)
+  // 선택된 날짜의 운행 시간 계산 (운행 세션 기반)
   const operatingTime = useMemo(() => {
-    if (filteredLogs.length === 0) {
-      return "00:00:00";
-    }
-
-    // 타임스탬프 기준으로 정렬
-    const sortedLogs = [...filteredLogs].sort(
-      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    // 선택된 날짜의 완료된 세션만 필터링
+    const completedSessions = operatingSessions.filter(
+      (session) => session.date === selectedDate && session.endTime !== null
     );
 
-    const firstLogTime = new Date(sortedLogs[0].timestamp).getTime();
-    const lastLogTime = new Date(sortedLogs[sortedLogs.length - 1].timestamp).getTime();
-    const diffMs = lastLogTime - firstLogTime;
+    // 모든 세션의 운행시간 합산
+    const totalMs = completedSessions.reduce((sum, session) => {
+      if (session.endTime !== null) {
+        return sum + (session.endTime - session.startTime);
+      }
+      return sum;
+    }, 0);
 
     // 밀리초를 시:분:초로 변환
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+    const hours = Math.floor(totalMs / (1000 * 60 * 60));
+    const minutes = Math.floor((totalMs % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((totalMs % (1000 * 60)) / 1000);
 
     return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  }, [filteredLogs]);
+  }, [operatingSessions, selectedDate]);
 
   return (
     <View style={styles.container}>

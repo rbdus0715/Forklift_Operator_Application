@@ -13,6 +13,7 @@ const BORDER_WIDTH = 0.2;
 const SOCKET_PORT = 9000;
 const WARNING_LOGS_KEY = "@warning_logs";
 const ALL_LOGS_KEY = "@all_logs"; // 모든 거리 데이터 로그
+const OPERATING_SESSIONS_KEY = "@operating_sessions"; // 운행 세션 (시작/종료 시간)
 const WARNING_THRESHOLD_DISTANCE = 3; // 3미터
 const WARNING_MIN_DURATION = 1000; // 1초 (밀리초)
 const LOG_INTERVAL = 1000; // 모든 로그 저장 간격 (1초)
@@ -56,6 +57,9 @@ export const WorkingScreen = () => {
   // 모든 로그 저장 관련 상태
   const lastLogTimeRef = useRef<number>(0); // 마지막 로그 저장 시간
   const logIntervalRef = useRef<NodeJS.Timeout | null>(null); // 로그 저장 인터벌
+  const sessionStartTimeRef = useRef<number | null>(null); // 세션 시작 시간
+  const hasStartedLogRef = useRef<boolean>(false); // 시작 로그 저장 여부
+  const lastDistanceRef = useRef<number>(0); // 마지막 거리 값 저장
 
   // 로깅 상태 리셋 함수
   const resetWarningLogging = () => {
@@ -65,6 +69,16 @@ export const WorkingScreen = () => {
 
   useEffect(() => {
     const socketHost = (route.params as { socketHost: string })?.socketHost || "192.168.50.1";
+    
+    // 세션 시작 시간 기록 및 운행 세션 시작 저장
+    sessionStartTimeRef.current = Date.now();
+    if (!hasStartedLogRef.current) {
+      hasStartedLogRef.current = true;
+      // 운행 세션 시작 저장
+      saveOperatingSessionStart().catch((error) => {
+        console.error("운행 세션 시작 저장 실패:", error);
+      });
+    }
     
     // TCP 소켓 연결
     console.log("소켓 연결 시도:", `${socketHost}:${SOCKET_PORT}`);
@@ -232,14 +246,8 @@ export const WorkingScreen = () => {
             const filtered = kalmanFilter(distance);
             setFilteredRD(filtered);
             
-            // 모든 로그 저장 (1초마다)
-            const now = Date.now();
-            if (now - lastLogTimeRef.current >= LOG_INTERVAL) {
-              lastLogTimeRef.current = now;
-              saveAllLog(filtered).catch((error) => {
-                console.error("전체 로그 저장 실패:", error);
-              });
-            }
+            // 마지막 거리 값 저장 (주기적 로그 저장에서 사용)
+            lastDistanceRef.current = filtered;
           }
         } catch (e) {
           // JSON이 아니면 그대로 출력
@@ -294,6 +302,11 @@ export const WorkingScreen = () => {
 
       // 컴포넌트 언마운트 시 연결 종료
       return () => {
+        // 운행 세션 종료 저장
+        saveOperatingSessionEnd().catch((error) => {
+          console.error("운행 세션 종료 저장 실패:", error);
+        });
+        
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
           connectionTimeoutRef.current = null;
@@ -322,6 +335,8 @@ export const WorkingScreen = () => {
           logIntervalRef.current = null;
         }
         lastLogTimeRef.current = 0;
+        sessionStartTimeRef.current = null;
+        hasStartedLogRef.current = false;
       };
     } catch (error) {
       // console.error("TCP 소켓 생성 실패:", error);
@@ -338,6 +353,11 @@ export const WorkingScreen = () => {
       {
         text: "확인",
         onPress: () => {
+          // 운행 세션 종료 저장
+          saveOperatingSessionEnd().catch((error) => {
+            console.error("운행 세션 종료 저장 실패:", error);
+          });
+          
           // 연결 상태 먼저 false로 설정
           isConnectedRef.current = false;
           
@@ -364,6 +384,8 @@ export const WorkingScreen = () => {
           kalmanStateRef.current = null;
           // 경고 로깅 상태 리셋
           resetWarningLogging();
+          sessionStartTimeRef.current = null;
+          hasStartedLogRef.current = false;
           navigation.dispatch(
             CommonActions.reset({
               index: 0,
@@ -440,6 +462,65 @@ export const WorkingScreen = () => {
     }
 
   }, [filteredRD, rD]);
+
+  // 운행 세션 저장 함수 (시작 시간)
+  const saveOperatingSessionStart = async (): Promise<void> => {
+    try {
+      const now = new Date();
+      const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const timestamp = now.getTime();
+
+      const session = {
+        id: `session-${timestamp}-${Math.random().toString(36).substr(2, 9)}`,
+        date,
+        startTime: timestamp,
+        endTime: null as number | null,
+      };
+
+      // 기존 세션 불러오기
+      const sessionsJson = await AsyncStorage.getItem(OPERATING_SESSIONS_KEY);
+      const sessions: typeof session[] = sessionsJson ? JSON.parse(sessionsJson) : [];
+      
+      // 새 세션 추가
+      sessions.push(session);
+      
+      // 저장
+      await AsyncStorage.setItem(OPERATING_SESSIONS_KEY, JSON.stringify(sessions));
+      console.log("운행 세션 시작 저장:", { date, startTime: new Date(timestamp).toISOString() });
+    } catch (error) {
+      console.error("운행 세션 시작 저장 실패:", error);
+    }
+  };
+
+  // 운행 세션 종료 함수 (종료 시간 업데이트)
+  const saveOperatingSessionEnd = async (): Promise<void> => {
+    try {
+      const now = new Date();
+      const timestamp = now.getTime();
+
+      // 기존 세션 불러오기
+      const sessionsJson = await AsyncStorage.getItem(OPERATING_SESSIONS_KEY);
+      const sessions: Array<{ id: string; date: string; startTime: number; endTime: number | null }> = sessionsJson ? JSON.parse(sessionsJson) : [];
+      
+      // 가장 최근의 종료 시간이 없는 세션 찾기
+      const lastIncompleteSession = sessions
+        .filter(s => s.endTime === null)
+        .sort((a, b) => b.startTime - a.startTime)[0];
+      
+      if (lastIncompleteSession) {
+        lastIncompleteSession.endTime = timestamp;
+        await AsyncStorage.setItem(OPERATING_SESSIONS_KEY, JSON.stringify(sessions));
+        console.log("운행 세션 종료 저장:", { 
+          date: lastIncompleteSession.date, 
+          startTime: new Date(lastIncompleteSession.startTime).toISOString(),
+          endTime: new Date(timestamp).toISOString(),
+          duration: (timestamp - lastIncompleteSession.startTime) / 1000 + "초"
+        });
+      }
+    } catch (error) {
+      console.error("운행 세션 종료 저장 실패:", error);
+    }
+  };
 
   // 모든 거리 데이터 로그 저장 함수
   const saveAllLog = async (distance: number): Promise<void> => {
