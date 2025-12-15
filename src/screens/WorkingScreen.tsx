@@ -1,74 +1,14 @@
-import React, { useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, Pressable, Alert, BackHandler, Dimensions } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { View, Text, StyleSheet, Pressable, Alert, BackHandler } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HomeRoutes } from "../navigations/routes";
 import { HomeNavigation } from "../navigations/types";
 import { BLACK, WHITE, GRAY, RED } from "../color";
 import Socket from "react-native-tcp-socket";
-import { WarningLog } from "../components/LogCard/LogCard";
-
-const WARNING_LOGS_KEY = "@warning_logs";
-const WARNING_DURATION_THRESHOLD = 1000; // 1초 (밀리초)
 
 const BORDER_WIDTH = 0.2;
 const SOCKET_HOST = "192.168.50.1";
 const SOCKET_PORT = 9000;
-
-// 원의 반지름 (픽셀)
-const CIRCLE3_RADIUS = 300; // 중간 원 (3m) - 범위 확장
-const MAX_DISTANCE = 5; // 최대 표시 거리 (미터)
-const CENTER_OFFSET_Y = 180; // 중심점을 아래로 이동 (더 아래로)
-
-// 화면 크기 가져오기
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-const RADAR_CENTER_Y = SCREEN_HEIGHT * 0.425 + CENTER_OFFSET_Y; // 레이더 컨테이너의 중심 Y 위치
-
-// 샘플링 주기 (초)
-const SAMPLING_PERIOD = 0.1;
-
-// 1D 칼만 필터 클래스
-class KalmanFilter1D {
-  private x: number; // 상태 추정값 (거리)
-  private P: number; // 추정 오차 공분산
-  private Q: number; // 프로세스 노이즈 공분산
-  private R: number; // 측정 노이즈 공분산
-  private dt: number; // 샘플링 주기
-
-  constructor(initialValue: number, dt: number = SAMPLING_PERIOD) {
-    this.x = initialValue;
-    this.P = 1.0; // 초기 공분산
-    this.Q = 0.01; // 프로세스 노이즈 (작을수록 신뢰)
-    this.R = 0.1; // 측정 노이즈 (작을수록 측정값 신뢰)
-    this.dt = dt;
-  }
-
-  // 칼만 필터 업데이트
-  update(measurement: number): number {
-    // 예측 단계 (Prediction)
-    // 상태는 거의 변하지 않는다고 가정 (x_k = x_{k-1})
-    const x_pred = this.x;
-    const P_pred = this.P + this.Q;
-
-    // 업데이트 단계 (Update)
-    const K = P_pred / (P_pred + this.R); // 칼만 게인
-    this.x = x_pred + K * (measurement - x_pred);
-    this.P = (1 - K) * P_pred;
-
-    return this.x;
-  }
-
-  // 현재 추정값 반환
-  getValue(): number {
-    return this.x;
-  }
-
-  // 필터 리셋
-  reset(newValue: number) {
-    this.x = newValue;
-    this.P = 1.0;
-  }
-}
 
 export const WorkingScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
@@ -76,117 +16,40 @@ export const WorkingScreen = () => {
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isConnectedRef = useRef<boolean>(false);
   const failureHandledRef = useRef<boolean>(false);
-  const alertShowingRef = useRef<boolean>(false);
-  const kalmanFilterRef = useRef<KalmanFilter1D | null>(null);
-  const warningStartTimeRef = useRef<number | null>(null);
-  const warningLoggedRef = useRef<boolean>(false);
-  const [rD, setRD] = useState<number | null>(null);
-  const [pedestrianAngle, setPedestrianAngle] = useState<number | null>(null);
-  const [isWarning, setIsWarning] = useState<boolean>(false);
-  const [isRedBackground, setIsRedBackground] = useState<boolean>(false);
-
-  // 경고 로그 저장 함수
-  const saveWarningLog = async (distance: number) => {
-    try {
-      const now = new Date();
-      const log: WarningLog = {
-        id: `${now.getTime()}-${Math.random().toString(36).substr(2, 9)}`,
-        timestamp: now.toISOString(),
-        distance: distance,
-        date: now.toLocaleDateString("ko-KR", {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        }),
-        time: now.toLocaleTimeString("ko-KR", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }),
-      };
-
-      const existingLogsJson = await AsyncStorage.getItem(WARNING_LOGS_KEY);
-      const existingLogs = existingLogsJson ? JSON.parse(existingLogsJson) : [];
-      existingLogs.push(log);
-      await AsyncStorage.setItem(WARNING_LOGS_KEY, JSON.stringify(existingLogs));
-      console.log("경고 로그 저장됨:", log);
-    } catch (error) {
-      console.error("경고 로그 저장 실패:", error);
-    }
-  };
 
   useEffect(() => {
     // TCP 소켓 연결
     console.log("소켓 연결 시도:", `${SOCKET_HOST}:${SOCKET_PORT}`);
     console.log("연결 시작 시간:", new Date().toISOString());
-    
-    // 상태 리셋
-    failureHandledRef.current = false;
-    alertShowingRef.current = false;
-    isConnectedRef.current = false;
-    kalmanFilterRef.current = null; // 칼만 필터 리셋
-    warningStartTimeRef.current = null;
-    warningLoggedRef.current = false;
 
     const handleConnectionFailure = () => {
-      // 이미 처리 중이거나 Alert가 표시 중이면 무시
-      if (failureHandledRef.current || alertShowingRef.current) {
-        return;
-      }
-      
-      failureHandledRef.current = true;
-      alertShowingRef.current = true;
-      
-      // 소켓 리스너 제거 및 종료
-      if (socketRef.current) {
-        socketRef.current.removeAllListeners("data");
-        socketRef.current.removeAllListeners("error");
-        socketRef.current.removeAllListeners("close");
-        socketRef.current.destroy();
-        socketRef.current = null;
-      }
-      
-      // console.error("연결 실패 처리 시작");
-      Alert.alert("서버 연결 실패했습니다", "서버와의 연결이 끊어졌습니다.", [
-        {
-          text: "확인",
-          onPress: () => {
-            alertShowingRef.current = false;
-            navigation.navigate(HomeRoutes.HOME);
+      if (!failureHandledRef.current) {
+        failureHandledRef.current = true;
+        // console.error("연결 실패 처리 시작");
+        Alert.alert("서버 연결 실패했습니다", "서버와의 연결이 끊어졌습니다.", [
+          {
+            text: "확인",
+            onPress: () => {
+              navigation.navigate(HomeRoutes.HOME);
+            },
           },
-        },
-      ]);
+        ]);
+      }
     };
 
     const handleDisconnection = () => {
-      // 이미 처리 중이거나 Alert가 표시 중이면 무시
-      if (!isConnectedRef.current || failureHandledRef.current || alertShowingRef.current) {
-        return;
-      }
-      
-      // 연결 후 끊어진 경우
-      failureHandledRef.current = true;
-      alertShowingRef.current = true;
-      
-      // 소켓 리스너 제거 및 종료
-      if (socketRef.current) {
-        socketRef.current.removeAllListeners("data");
-        socketRef.current.removeAllListeners("error");
-        socketRef.current.removeAllListeners("close");
-        socketRef.current.destroy();
-        socketRef.current = null;
-      }
-      
-      // console.error("작업 중 연결 끊김");
-      Alert.alert("연결이 끊어졌습니다", "서버와의 연결이 끊어졌습니다. 홈으로 돌아갑니다.", [
-        {
-          text: "확인",
-          onPress: () => {
-            alertShowingRef.current = false;
-            navigation.navigate(HomeRoutes.HOME);
+      if (isConnectedRef.current && !failureHandledRef.current) {
+        // 연결 후 끊어진 경우
+        // console.error("작업 중 연결 끊김");
+        Alert.alert("연결이 끊어졌습니다", "서버와의 연결이 끊어졌습니다. 홈으로 돌아갑니다.", [
+          {
+            text: "확인",
+            onPress: () => {
+              navigation.navigate(HomeRoutes.HOME);
+            },
           },
-        },
-      ]);
+        ]);
+      }
     };
     
     try {
@@ -215,31 +78,19 @@ export const WorkingScreen = () => {
         handleConnectionFailure();
       }, 30000);
 
-      const handleData = (data: string | Buffer) => {
+      socket.on("data", (data) => {
         const dataString = data.toString();
         console.log("받은 데이터:", dataString);
         // JSON 데이터인 경우 파싱 시도
         try {
           const parsed = JSON.parse(dataString);
           console.log("파싱된 데이터:", parsed);
-          // rD 값 추출 (rD, rD값, distance 등 다양한 필드명 가능)
-          const distance = parsed.rD || parsed.rD값 || parsed.distance || parsed.rD_value;
-          if (typeof distance === "number") {
-            // 칼만 필터 초기화 (첫 번째 측정값인 경우)
-            if (kalmanFilterRef.current === null) {
-              kalmanFilterRef.current = new KalmanFilter1D(distance, SAMPLING_PERIOD);
-            }
-            
-            // 칼만 필터를 통해 거리값 필터링
-            const filteredDistance = kalmanFilterRef.current.update(distance);
-            setRD(filteredDistance);
-          }
         } catch (e) {
           // JSON이 아니면 그대로 출력
         }
-      };
+      });
 
-      const handleError = (error: Error) => {
+      socket.on("error", (error) => {
         // console.error("소켓 에러 발생");
         // console.error("에러 시간:", new Date().toISOString());
         // console.error("에러 상세:", error);
@@ -253,34 +104,24 @@ export const WorkingScreen = () => {
           // 연결 후 에러인 경우
           handleDisconnection();
         }
-      };
+      });
 
-      const handleClose = () => {
+      socket.on("close", () => {
         console.log("소켓 연결 종료");
         console.log("종료 시간:", new Date().toISOString());
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
         }
-        // 이미 처리 중이면 무시
-        if (failureHandledRef.current || alertShowingRef.current) {
-          return;
-        }
         // 연결 성공하지 않은 경우 실패 처리
-        if (!isConnectedRef.current) {
+        if (!isConnectedRef.current && !failureHandledRef.current) {
           setTimeout(() => {
-            if (!failureHandledRef.current && !alertShowingRef.current) {
-              handleConnectionFailure();
-            }
+            handleConnectionFailure();
           }, 100);
-        } else {
+        } else if (isConnectedRef.current && !failureHandledRef.current) {
           // 연결 후 끊어진 경우
           handleDisconnection();
         }
-      };
-
-      socket.on("data", handleData);
-      socket.on("error", handleError);
-      socket.on("close", handleClose);
+      });
 
       socketRef.current = socket;
 
@@ -288,31 +129,16 @@ export const WorkingScreen = () => {
       return () => {
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
-          connectionTimeoutRef.current = null;
         }
         if (socketRef.current) {
           console.log("컴포넌트 언마운트 - 소켓 연결 종료");
-          // 모든 리스너 제거
-          socketRef.current.removeAllListeners("data");
-          socketRef.current.removeAllListeners("error");
-          socketRef.current.removeAllListeners("close");
-          // 소켓 종료
           socketRef.current.destroy();
           socketRef.current = null;
         }
-        // 리셋
-        alertShowingRef.current = false;
-        failureHandledRef.current = false;
-        isConnectedRef.current = false;
-        kalmanFilterRef.current = null; // 칼만 필터 리셋
-        warningStartTimeRef.current = null;
-        warningLoggedRef.current = false;
       };
     } catch (error) {
       // console.error("TCP 소켓 생성 실패:", error);
-      if (!failureHandledRef.current && !alertShowingRef.current) {
-        handleConnectionFailure();
-      }
+      handleConnectionFailure();
     }
   }, [navigation]);
 
@@ -325,26 +151,12 @@ export const WorkingScreen = () => {
       {
         text: "확인",
         onPress: () => {
-          // 소켓 연결 완전히 종료
+          // 소켓 연결 종료
           if (socketRef.current) {
             console.log("종료 확인 - 소켓 연결 종료");
-            // 모든 리스너 제거
-            socketRef.current.removeAllListeners("data");
-            socketRef.current.removeAllListeners("error");
-            socketRef.current.removeAllListeners("close");
-            // 소켓 종료
             socketRef.current.destroy();
             socketRef.current = null;
           }
-          // 타임아웃 클리어
-          if (connectionTimeoutRef.current) {
-            clearTimeout(connectionTimeoutRef.current);
-            connectionTimeoutRef.current = null;
-          }
-          // 상태 리셋
-          alertShowingRef.current = false;
-          failureHandledRef.current = false;
-          isConnectedRef.current = false;
           navigation.navigate(HomeRoutes.HOME);
         },
       },
@@ -361,77 +173,8 @@ export const WorkingScreen = () => {
     return () => backHandler.remove();
   }, []);
 
-  // 보행자는 항상 정중앙 앞에서 나타나므로 각도 설정 불필요
-  // 이 useEffect는 제거 가능하지만 호환성을 위해 유지
-
-  // 거리가 3미터 이내인지 확인 및 경고 로그 저장
-  useEffect(() => {
-    const isWithin3m = rD !== null && rD <= 3;
-    setIsWarning(isWithin3m);
-
-    if (isWithin3m) {
-      // 경고 시작 시간 기록
-      if (warningStartTimeRef.current === null) {
-        warningStartTimeRef.current = Date.now();
-        warningLoggedRef.current = false;
-      } else {
-        // 경고가 1초 이상 지속되었고 아직 로그를 저장하지 않았다면
-        const duration = Date.now() - warningStartTimeRef.current;
-        if (duration >= WARNING_DURATION_THRESHOLD && !warningLoggedRef.current && rD !== null) {
-          saveWarningLog(rD);
-          warningLoggedRef.current = true;
-        }
-      }
-    } else {
-      // 경고가 해제되면 리셋
-      warningStartTimeRef.current = null;
-      warningLoggedRef.current = false;
-    }
-  }, [rD]);
-
-  // 경고 상태일 때 배경색 깜빡이기 (1초 단위)
-  useEffect(() => {
-    if (!isWarning) {
-      setIsRedBackground(false);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setIsRedBackground((prev) => !prev);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isWarning]);
-
-  // 보행자 위치 계산 - 정중앙 앞에서 나타남
-  const getPedestrianPosition = () => {
-    if (rD === null || rD > MAX_DISTANCE) {
-      return null;
-    }
-
-    // 5미터일 때 위쪽, 가까워질수록 아래로, 중앙으로 이동
-    // 거리에 따라 y 위치 계산 (5m -> 위쪽, 0m -> 중앙)
-    const maxY = -CIRCLE3_RADIUS * 1.5; // 5미터일 때 위쪽 위치
-    const minY = 0; // 0미터일 때 중앙
-    
-    // 거리가 멀수록 위쪽, 가까울수록 아래쪽
-    const y = maxY + ((MAX_DISTANCE - rD) / MAX_DISTANCE) * (minY - maxY);
-    
-    // x는 항상 0 (정중앙)
-    const x = 0;
-    
-    return { x, y, distance: rD };
-  };
-
-  const pedestrianPosition = getPedestrianPosition();
-
-  // 동적 스타일 생성
-  const radarCenterStyle = {
-    top: RADAR_CENTER_Y,
-  };
-
   return (
-    <View style={[styles.container, isRedBackground && styles.redBackground]}>
+    <View style={styles.container}>
       {/* 헤더 */}
       <View style={styles.header}>
         <Pressable style={styles.backButton} onPress={handleExit}>
@@ -443,53 +186,27 @@ export const WorkingScreen = () => {
         </Pressable>
       </View>
 
-      {/* 경고 메시지 (3미터 이내일 때) */}
-      {isWarning && (
-        <View style={styles.warningContainer}>
-          <Text style={styles.warningText}>작업자</Text>
-          <Text style={styles.warningText}>3미터 이내</Text>
-        </View>
-      )}
-
       {/* 레이더 스타일 디스플레이 */}
       <View style={styles.radarContainer}>
         {/* 동심원들 */}
-        <View style={[styles.circle1, radarCenterStyle]} />
-        <View style={[styles.circle2, radarCenterStyle]} />
-        <View style={[styles.circle3, radarCenterStyle]} />
-        <View style={[styles.circle4, radarCenterStyle]} />
+        <View style={styles.circle1} />
+        <View style={styles.circle2} />
+        <View style={styles.circle3} />
+        <View style={styles.circle4} />
 
         {/* 수평선 */}
-        <View style={[styles.horizontalLine, radarCenterStyle]} />
+        <View style={styles.horizontalLine} />
 
         {/* 중앙 원 */}
-        <View style={[styles.centerCircle, radarCenterStyle]} />
+        <View style={styles.centerCircle} />
 
         {/* 거리 표시 */}
-        <Text style={[styles.distanceText, { top: RADAR_CENTER_Y - 200 }]}>3m</Text>
+        <Text style={styles.distanceText}>3m</Text>
 
-        {/* 보행자 마커 */}
-        {pedestrianPosition && (
-          <View
-            style={[
-              styles.pedestrianMarker,
-              radarCenterStyle,
-              {
-                transform: [
-                  { translateX: pedestrianPosition.x },
-                  { translateY: pedestrianPosition.y },
-                ],
-              },
-            ]}
-          >
-            <View style={styles.pedestrianIcon}>
-              <Text style={styles.pedestrianIconText}>👤</Text>
-            </View>
-            <Text style={styles.pedestrianDistance}>
-              {pedestrianPosition.distance.toFixed(1)}m
-            </Text>
-          </View>
-        )}
+        {/* 사용자 아이콘 (왼쪽 상단) */}
+        <View style={styles.userIcon}>
+          <Text style={styles.userIconText}>👤</Text>
+        </View>
       </View>
 
       {/* 종료 버튼 */}
@@ -504,25 +221,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: BLACK,
-  },
-  redBackground: {
-    backgroundColor: RED,
-  },
-  warningContainer: {
-    position: "absolute",
-    top: 120, // 상단에 배치
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 1000,
-  },
-  warningText: {
-    fontSize: 48,
-    fontWeight: "900",
-    color: WHITE,
-    textAlign: "center",
-    marginVertical: 8,
   },
   header: {
     flexDirection: "row",
@@ -564,58 +262,44 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
-    paddingTop: CENTER_OFFSET_Y, // 중심점을 아래로 이동
   },
   circle1: {
     position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
     borderWidth: BORDER_WIDTH,
     borderColor: GRAY,
-    left: "50%",
-    marginLeft: -100,
-    marginTop: -100,
   },
   circle2: {
     position: "absolute",
-    width: 400,
-    height: 400,
-    borderRadius: 200,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
     borderWidth: BORDER_WIDTH,
-    borderColor: "#FFA500", // 3m 원 - 주황색
-    left: "50%",
-    marginLeft: -200,
-    marginTop: -200,
+    borderColor: RED,
   },
   circle3: {
+    position: "absolute",
+    width: 450,
+    height: 450,
+    borderRadius: 250,
+    borderWidth: BORDER_WIDTH,
+    borderColor: GRAY,
+  },
+  circle4: {
     position: "absolute",
     width: 600,
     height: 600,
     borderRadius: 300,
     borderWidth: BORDER_WIDTH,
     borderColor: GRAY,
-    left: "50%",
-    marginLeft: -300,
-    marginTop: -300,
-  },
-  circle4: {
-    position: "absolute",
-    width: 800,
-    height: 800,
-    borderRadius: 400,
-    borderWidth: BORDER_WIDTH,
-    borderColor: GRAY,
-    left: "50%",
-    marginLeft: -400,
-    marginTop: -400,
   },
   horizontalLine: {
     position: "absolute",
     width: "100%",
     height: BORDER_WIDTH,
     backgroundColor: GRAY,
-    left: 0,
   },
   centerCircle: {
     width: 20,
@@ -623,9 +307,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: WHITE,
     position: "absolute",
-    left: "50%",
-    marginLeft: -10,
-    marginTop: -10,
   },
   distanceText: {
     position: "absolute",
@@ -647,38 +328,6 @@ const styles = StyleSheet.create({
   },
   userIconText: {
     fontSize: 24,
-  },
-  pedestrianMarker: {
-    position: "absolute",
-    width: 50,
-    height: 50,
-    justifyContent: "center",
-    alignItems: "center",
-    left: "50%",
-    marginLeft: -25,
-    marginTop: -25,
-  },
-  pedestrianIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "#FF8C00",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  pedestrianIconText: {
-    fontSize: 24,
-  },
-  pedestrianDistance: {
-    position: "absolute",
-    top: -20,
-    color: RED,
-    fontSize: 12,
-    fontWeight: "600",
-    backgroundColor: BLACK,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 4,
   },
   endButton: {
     position: "absolute",
