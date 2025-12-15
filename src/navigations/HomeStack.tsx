@@ -5,6 +5,7 @@ import LogScreen from "../screens/LogScreen";
 import StatisticsScreen from "../screens/StatisticsScreen";
 import { LoadingScreen } from "../screens/LoadingScreen";
 import { WorkingScreen } from "../screens/WorkingScreen";
+import SettingsScreen from "../screens/SettingsScreen";
 import { WHITE } from "../color";
 
 const Stack = createNativeStackNavigator();
@@ -22,6 +23,7 @@ const HomeStack = () => {
       <Stack.Screen name={HomeRoutes.STATISTICS} component={StatisticsScreen} />
       <Stack.Screen name={HomeRoutes.LOADING} component={LoadingScreen} />
       <Stack.Screen name={HomeRoutes.WORKING} component={WorkingScreen} />
+      <Stack.Screen name={HomeRoutes.SETTINGS} component={SettingsScreen} />
     </Stack.Navigator>
   );
 };

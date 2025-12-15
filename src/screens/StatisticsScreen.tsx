@@ -7,6 +7,7 @@ import { WHITE, BLACK, GRAY } from "../color";
 import { WarningLog } from "../components/LogCard/LogCard";
 import { LineChart } from "react-native-chart-kit";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { useFontSize } from "../contexts/FontSizeContext";
 
 const ALL_LOGS_KEY = "@all_logs"; // 모든 거리 데이터 로그
 const WARNING_LOGS_KEY = "@warning_logs"; // 경고 로그
@@ -14,6 +15,8 @@ const screenWidth = Dimensions.get("window").width;
 
 const StatisticsScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
+  const { fontSize } = useFontSize();
+  const isLarge = fontSize === "large";
   const [logs, setLogs] = useState<WarningLog[]>([]);
   const [warningLogs, setWarningLogs] = useState<WarningLog[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -198,18 +201,18 @@ const StatisticsScreen = () => {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backIcon}>←</Text>
+          <Text style={[styles.backIcon, isLarge && styles.backIconLarge]}>←</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>통계 확인</Text>
+        <Text style={[styles.headerTitle, isLarge && styles.headerTitleLarge]}>통계 확인</Text>
         <View style={styles.placeholderButton} />
       </View>
 
       {/* 날짜 선택 영역 */}
       <View style={styles.dateContainer}>
-        <Text style={styles.dateLabel}>날짜 선택:</Text>
+        <Text style={[styles.dateLabel, isLarge && styles.dateLabelLarge]}>날짜 선택:</Text>
         <Pressable style={styles.dateButton} onPress={openDatePicker}>
-          <Text style={styles.dateText}>{selectedDate}</Text>
-          <Text style={styles.dateIcon}>📅</Text>
+          <Text style={[styles.dateText, isLarge && styles.dateTextLarge]}>{selectedDate}</Text>
+          <Text style={[styles.dateIcon, isLarge && styles.dateIconLarge]}>📅</Text>
         </Pressable>
       </View>
 
@@ -230,14 +233,14 @@ const StatisticsScreen = () => {
                       onPress={() => setShowDatePicker(false)}
                       style={styles.modalCancelButton}
                     >
-                      <Text style={styles.modalCancelText}>취소</Text>
+                      <Text style={[styles.modalCancelText, isLarge && styles.modalCancelTextLarge]}>취소</Text>
                     </Pressable>
-                    <Text style={styles.modalTitle}>날짜 선택</Text>
+                    <Text style={[styles.modalTitle, isLarge && styles.modalTitleLarge]}>날짜 선택</Text>
                     <Pressable
                       onPress={handleDateConfirm}
                       style={styles.modalConfirmButton}
                     >
-                      <Text style={styles.modalConfirmText}>완료</Text>
+                      <Text style={[styles.modalConfirmText, isLarge && styles.modalConfirmTextLarge]}>완료</Text>
                     </Pressable>
                   </View>
                   <DateTimePicker
@@ -273,7 +276,7 @@ const StatisticsScreen = () => {
       >
         {!hasData ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>
+            <Text style={[styles.emptyText, isLarge && styles.emptyTextLarge]}>
               {filteredLogs.length === 0
                 ? "선택한 날짜에 데이터가 없습니다"
                 : "그래프 데이터가 없습니다"}
@@ -281,8 +284,8 @@ const StatisticsScreen = () => {
           </View>
         ) : (
           <View style={styles.chartContainer}>
-            <Text style={styles.chartTitle}>작업 시간에 따른 거리 그래프</Text>
-            <Text style={styles.chartSubtitle}>
+            <Text style={[styles.chartTitle, isLarge && styles.chartTitleLarge]}>작업 시간에 따른 거리 그래프</Text>
+            <Text style={[styles.chartSubtitle, isLarge && styles.chartSubtitleLarge]}>
               {selectedDate} ({filteredLogs.length}건)
             </Text>
             <LineChart
@@ -334,12 +337,12 @@ const StatisticsScreen = () => {
             {/* 통계 박스 카드 */}
             <View style={styles.statsContainer}>
               <View style={styles.statCard}>
-                <Text style={styles.statLabel}>오늘 과속 횟수</Text>
-                <Text style={styles.statValue}>{speedViolationCount}</Text>
+                <Text style={[styles.statLabel, isLarge && styles.statLabelLarge]}>오늘 과속 횟수</Text>
+                <Text style={[styles.statValue, isLarge && styles.statValueLarge]}>{speedViolationCount}</Text>
               </View>
               <View style={styles.statCard}>
-                <Text style={styles.statLabel}>3m 이내 경고</Text>
-                <Text style={styles.statValue}>{warningCount}</Text>
+                <Text style={[styles.statLabel, isLarge && styles.statLabelLarge]}>3m 이내 경고</Text>
+                <Text style={[styles.statValue, isLarge && styles.statValueLarge]}>{warningCount}</Text>
               </View>
             </View>
           </View>
@@ -521,6 +524,45 @@ const styles = StyleSheet.create({
   datePicker: {
     width: "100%",
     height: 200,
+  },
+  backIconLarge: {
+    fontSize: 30,
+  },
+  headerTitleLarge: {
+    fontSize: 31,
+  },
+  dateLabelLarge: {
+    fontSize: 20,
+  },
+  dateTextLarge: {
+    fontSize: 20,
+  },
+  dateIconLarge: {
+    fontSize: 22,
+  },
+  chartTitleLarge: {
+    fontSize: 22,
+  },
+  chartSubtitleLarge: {
+    fontSize: 18,
+  },
+  statLabelLarge: {
+    fontSize: 18,
+  },
+  statValueLarge: {
+    fontSize: 40,
+  },
+  emptyTextLarge: {
+    fontSize: 20,
+  },
+  modalCancelTextLarge: {
+    fontSize: 20,
+  },
+  modalTitleLarge: {
+    fontSize: 22,
+  },
+  modalConfirmTextLarge: {
+    fontSize: 20,
   },
 });
 

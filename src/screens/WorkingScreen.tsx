@@ -7,6 +7,7 @@ import { BLACK, WHITE, GRAY, RED } from "../color";
 import Socket from "react-native-tcp-socket";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { WarningLog } from "../components/LogCard/LogCard";
+import { useFontSize } from "../contexts/FontSizeContext";
 
 const BORDER_WIDTH = 0.2;
 const SOCKET_PORT = 9000;
@@ -28,6 +29,8 @@ const RADAR_CENTER_Y = SCREEN_HEIGHT * 0.425 + CENTER_OFFSET_Y; // 레이더 컨
 export const WorkingScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
   const route = useRoute();
+  const { fontSize } = useFontSize();
+  const isLarge = fontSize === "large";
   const socketRef = useRef<Socket.Socket | null>(null);
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isConnectedRef = useRef<boolean>(false);
@@ -547,9 +550,9 @@ export const WorkingScreen = () => {
       {/* 헤더 */}
       <View style={styles.header}>
         <Pressable style={styles.backButton} onPress={handleExit}>
-          <Text style={styles.backIcon}>←</Text>
+          <Text style={[styles.backIcon, isLarge && styles.backIconLarge]}>←</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>작업 중</Text>
+        <Text style={[styles.headerTitle, isLarge && styles.headerTitleLarge]}>작업 중</Text>
         <Pressable style={styles.placeholderButton}>
           <Text style={styles.placeholderIcon}></Text>
         </Pressable>
@@ -558,8 +561,8 @@ export const WorkingScreen = () => {
       {/* 경고 메시지 (3미터 이내일 때) */}
       {isWarning && (
         <View style={styles.warningContainer}>
-          <Text style={styles.warningText}>작업자</Text>
-          <Text style={styles.warningText}>3미터 이내</Text>
+          <Text style={[styles.warningText, isLarge && styles.warningTextLarge]}>작업자</Text>
+          <Text style={[styles.warningText, isLarge && styles.warningTextLarge]}>3미터 이내</Text>
         </View>
       )}
 
@@ -578,7 +581,7 @@ export const WorkingScreen = () => {
         <View style={[styles.centerCircle, radarCenterStyle]} />
 
         {/* 거리 표시 */}
-        <Text style={[styles.distanceText, { top: RADAR_CENTER_Y - 200 }]}>3m</Text>
+        <Text style={[styles.distanceText, isLarge && styles.distanceTextLarge, { top: RADAR_CENTER_Y - 200 }]}>3m</Text>
 
         {/* 보행자 마커 */}
         {pedestrianPosition && (
@@ -595,9 +598,9 @@ export const WorkingScreen = () => {
             ]}
           >
             <View style={styles.pedestrianIcon}>
-              <Text style={styles.pedestrianIconText}>👤</Text>
+              <Text style={[styles.pedestrianIconText, isLarge && styles.pedestrianIconTextLarge]}>👤</Text>
             </View>
-            <Text style={styles.pedestrianDistance}>
+            <Text style={[styles.pedestrianDistance, isLarge && styles.pedestrianDistanceLarge]}>
               {pedestrianPosition.distance.toFixed(1)}m
             </Text>
           </View>
@@ -606,7 +609,7 @@ export const WorkingScreen = () => {
 
       {/* 종료 버튼 */}
       <Pressable style={styles.endButton} onPress={handleExit}>
-        <Text style={styles.endButtonText}>종료</Text>
+        <Text style={[styles.endButtonText, isLarge && styles.endButtonTextLarge]}>종료</Text>
       </Pressable>
     </View>
   );
@@ -807,5 +810,26 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: BLACK,
+  },
+  backIconLarge: {
+    fontSize: 30,
+  },
+  headerTitleLarge: {
+    fontSize: 31,
+  },
+  warningTextLarge: {
+    fontSize: 60,
+  },
+  distanceTextLarge: {
+    fontSize: 20,
+  },
+  pedestrianIconTextLarge: {
+    fontSize: 30,
+  },
+  pedestrianDistanceLarge: {
+    fontSize: 16,
+  },
+  endButtonTextLarge: {
+    fontSize: 22,
   },
 });

@@ -5,6 +5,7 @@ import { HomeRoutes } from "../navigations/routes";
 import { HomeNavigation } from "../navigations/types";
 import { WHITE, GRAY, BLACK } from "../color";
 import Socket from "react-native-tcp-socket";
+import { useFontSize } from "../contexts/FontSizeContext";
 
 const SOCKET_PORT = 9000;
 const CONNECTION_TIMEOUT = 30000; // 30초
@@ -12,6 +13,8 @@ const CONNECTION_TIMEOUT = 30000; // 30초
 export const LoadingScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
   const route = useRoute();
+  const { fontSize } = useFontSize();
+  const isLarge = fontSize === "large";
   const socketRef = useRef<Socket.Socket | null>(null);
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isConnectedRef = useRef<boolean>(false);
@@ -113,8 +116,8 @@ export const LoadingScreen = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>서버와의 접속을</Text>
-      <Text style={styles.text}>확인중입니다.</Text>
+      <Text style={[styles.text, isLarge && styles.textLarge]}>서버와의 접속을</Text>
+      <Text style={[styles.text, isLarge && styles.textLarge]}>확인중입니다.</Text>
       <ActivityIndicator size="large" color={BLACK} style={styles.spinner} />
     </View>
   );
@@ -135,6 +138,9 @@ const styles = StyleSheet.create({
   },
   spinner: {
     marginTop: 30,
+  },
+  textLarge: {
+    fontSize: 20,
   },
 });
 

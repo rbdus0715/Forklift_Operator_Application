@@ -4,4 +4,5 @@ export const HomeRoutes = {
   STATISTICS: "Statistics",
   LOADING: "Loading",
   WORKING: "Working",
+  SETTINGS: "Settings",
 } as const;

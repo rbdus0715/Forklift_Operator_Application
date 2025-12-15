@@ -3,13 +3,17 @@ import { View, Text, StyleSheet, Pressable, ScrollView, RefreshControl, Share, A
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { HomeNavigation } from "../navigations/types";
+import { HomeRoutes } from "../navigations/routes";
 import { WHITE, BLACK } from "../color";
 import LogCard, { WarningLog } from "../components/LogCard/LogCard";
+import { useFontSize } from "../contexts/FontSizeContext";
 
 const WARNING_LOGS_KEY = "@warning_logs";
 
 const LogScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
+  const { fontSize } = useFontSize();
+  const isLarge = fontSize === "large";
   const [logs, setLogs] = useState<WarningLog[]>([]);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -118,18 +122,18 @@ const LogScreen = () => {
           style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
-          <Text style={styles.backIcon}>←</Text>
+          <Text style={[styles.backIcon, isLarge && styles.backIconLarge]}>←</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>경고 기록 세부</Text>
+        <Text style={[styles.headerTitle, isLarge && styles.headerTitleLarge]}>경고 기록 세부</Text>
         <Pressable style={styles.uploadButton} onPress={handleExportCSV}>
-          <Text style={styles.uploadIcon}>↑</Text>
+          <Text style={[styles.uploadIcon, isLarge && styles.uploadIconLarge]}>↑</Text>
         </Pressable>
       </View>
 
       {/* 카드 리스트 */}
       {logs.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>경고 기록이 없습니다</Text>
+          <Text style={[styles.emptyText, isLarge && styles.emptyTextLarge]}>경고 기록이 없습니다</Text>
         </View>
       ) : (
         <ScrollView
@@ -149,7 +153,7 @@ const LogScreen = () => {
       {logs.length > 0 && (
         <View style={styles.footer}>
           <Pressable style={styles.clearButton} onPress={handleClearLogs}>
-            <Text style={styles.clearButtonText}>로그 목록 비우기</Text>
+            <Text style={[styles.clearButtonText, isLarge && styles.clearButtonTextLarge]}>로그 목록 비우기</Text>
           </Pressable>
         </View>
       )}
@@ -233,6 +237,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: WHITE,
+  },
+  backIconLarge: {
+    fontSize: 30,
+  },
+  headerTitleLarge: {
+    fontSize: 31,
+  },
+  uploadIconLarge: {
+    fontSize: 30,
+  },
+  emptyTextLarge: {
+    fontSize: 20,
+  },
+  clearButtonTextLarge: {
+    fontSize: 20,
   },
 });
 
