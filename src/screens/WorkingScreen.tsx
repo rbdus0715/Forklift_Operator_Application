@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, Pressable, Alert, BackHandler, Dimensions } from "react-native";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useNavigation, useRoute, CommonActions } from "@react-navigation/native";
 import { HomeRoutes } from "../navigations/routes";
 import { HomeNavigation } from "../navigations/types";
 import { BLACK, WHITE, GRAY, RED } from "../color";
@@ -101,7 +101,12 @@ export const WorkingScreen = () => {
             onPress: () => {
               alertShowingRef.current = false;
               alertRef.current = false;
-              navigation.navigate(HomeRoutes.HOME);
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: HomeRoutes.HOME }],
+                })
+              );
             },
           },
         ]);
@@ -135,7 +140,12 @@ export const WorkingScreen = () => {
             onPress: () => {
               alertShowingRef.current = false;
               alertRef.current = false;
-              navigation.navigate(HomeRoutes.HOME);
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: HomeRoutes.HOME }],
+                })
+              );
             },
           },
         ]);
@@ -354,7 +364,12 @@ export const WorkingScreen = () => {
           kalmanStateRef.current = null;
           // 경고 로깅 상태 리셋
           resetWarningLogging();
-          navigation.navigate(HomeRoutes.HOME);
+          navigation.dispatch(
+            CommonActions.reset({
+              index: 0,
+              routes: [{ name: HomeRoutes.HOME }],
+            })
+          );
         },
       },
     ]);
