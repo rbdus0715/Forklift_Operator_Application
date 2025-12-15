@@ -185,8 +185,6 @@ const StatisticsScreen = () => {
     }, [])
   );
 
-  const hasData = chartData.data.length > 0 && chartData.data.some((val) => val > 0);
-
   // 오늘 날짜 계산
   const todayDate = useMemo(() => {
     const today = new Date();
@@ -201,10 +199,10 @@ const StatisticsScreen = () => {
   // 오늘 과속 횟수 (아직 처리 안 함 - 0으로 고정)
   const speedViolationCount = 0;
 
-  // 오늘 3m 이내 경고 횟수 (경고 로그에서 가져오기)
+  // 선택된 날짜의 3m 이내 경고 횟수 (경고 로그에서 가져오기)
   const warningCount = useMemo(() => {
-    return todayWarningLogs.length;
-  }, [todayWarningLogs]);
+    return warningLogs.filter((log) => log.date === selectedDate).length;
+  }, [warningLogs, selectedDate]);
 
   // 선택된 날짜의 운행 시간 계산 (첫 로그 ~ 마지막 로그)
   const operatingTime = useMemo(() => {
@@ -310,87 +308,77 @@ const StatisticsScreen = () => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {!hasData ? (
-          <View style={styles.emptyContainer}>
-            <Text style={[styles.emptyText, isLarge && styles.emptyTextLarge]}>
-              {filteredLogs.length === 0
-                ? "선택한 날짜에 데이터가 없습니다"
-                : "그래프 데이터가 없습니다"}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.chartContainer}>
-            <Text style={[styles.chartTitle, isLarge && styles.chartTitleLarge]}>작업 시간에 따른 거리 그래프</Text>
-            <Text style={[styles.chartSubtitle, isLarge && styles.chartSubtitleLarge]}>
-              {selectedDate} ({filteredLogs.length}건)
-            </Text>
-            <LineChart
-              data={{
-                labels: chartData.labels,
-                datasets: [
-                  {
-                    data: chartData.data,
-                    color: (opacity = 1) => `rgba(1, 92, 174, ${opacity})`, // PRIMARY 색상
-                    strokeWidth: 2,
-                  },
-                ],
-              }}
-              width={screenWidth - 48} // 화면 너비에 맞춤
-              height={220}
-              yAxisLabel=""
-              yAxisSuffix=" m"
-              chartConfig={{
-                backgroundColor: WHITE,
-                backgroundGradientFrom: WHITE,
-                backgroundGradientTo: WHITE,
-                decimalPlaces: 2,
-                color: (opacity = 1) => `rgba(1, 92, 174, ${opacity})`,
-                labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                style: {
-                  borderRadius: 16,
+        <View style={styles.chartContainer}>
+          <Text style={[styles.chartTitle, isLarge && styles.chartTitleLarge]}>작업 시간에 따른 거리 그래프</Text>
+          <Text style={[styles.chartSubtitle, isLarge && styles.chartSubtitleLarge]}>
+            {selectedDate} ({filteredLogs.length}건)
+          </Text>
+          <LineChart
+            data={{
+              labels: chartData.labels,
+              datasets: [
+                {
+                  data: chartData.data,
+                  color: (opacity = 1) => `rgba(1, 92, 174, ${opacity})`, // PRIMARY 색상
+                  strokeWidth: 2,
                 },
-                propsForDots: {
-                  r: "4",
-                  strokeWidth: "2",
-                  stroke: "#015CAE",
-                },
-                propsForBackgroundLines: {
-                  strokeDasharray: "",
-                  stroke: GRAY,
-                  strokeWidth: 1,
-                },
-                propsForLabels: {
-                  fontSize: 11,
-                },
-              }}
-              bezier
-              style={{
-                marginVertical: 8,
+              ],
+            }}
+            width={screenWidth - 48} // 화면 너비에 맞춤
+            height={220}
+            yAxisLabel=""
+            yAxisSuffix=" m"
+            chartConfig={{
+              backgroundColor: WHITE,
+              backgroundGradientFrom: WHITE,
+              backgroundGradientTo: WHITE,
+              decimalPlaces: 2,
+              color: (opacity = 1) => `rgba(1, 92, 174, ${opacity})`,
+              labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+              style: {
                 borderRadius: 16,
-              }}
-            />
-            
-            {/* 통계 박스 카드 */}
-            <View style={styles.statsContainer}>
-              <View style={styles.statCard}>
-                <Text style={[styles.statLabel, isLarge && styles.statLabelLarge]}>오늘 과속 횟수</Text>
-                <Text style={[styles.statValue, isLarge && styles.statValueLarge]}>{speedViolationCount}</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={[styles.statLabel, isLarge && styles.statLabelLarge]}>3m 이내 경고</Text>
-                <Text style={[styles.statValue, isLarge && styles.statValueLarge]}>{warningCount}</Text>
-              </View>
+              },
+              propsForDots: {
+                r: "4",
+                strokeWidth: "2",
+                stroke: "#015CAE",
+              },
+              propsForBackgroundLines: {
+                strokeDasharray: "",
+                stroke: GRAY,
+                strokeWidth: 1,
+              },
+              propsForLabels: {
+                fontSize: 11,
+              },
+            }}
+            bezier
+            style={{
+              marginVertical: 8,
+              borderRadius: 16,
+            }}
+          />
+          
+          {/* 통계 박스 카드 */}
+          <View style={styles.statsContainer}>
+            <View style={styles.statCard}>
+              <Text style={[styles.statLabel, isLarge && styles.statLabelLarge]}>오늘 과속 횟수</Text>
+              <Text style={[styles.statValue, isLarge && styles.statValueLarge]}>{speedViolationCount}</Text>
             </View>
-            
-            {/* 운행 시간 카드 */}
-            <View style={styles.operatingTimeContainer}>
-              <View style={styles.operatingTimeCard}>
-                <Text style={[styles.statLabel, isLarge && styles.statLabelLarge]}>운행 시간</Text>
-                <Text style={[styles.operatingTimeValue, isLarge && styles.operatingTimeValueLarge]}>{operatingTime}</Text>
-              </View>
+            <View style={styles.statCard}>
+              <Text style={[styles.statLabel, isLarge && styles.statLabelLarge]}>3m 이내 경고</Text>
+              <Text style={[styles.statValue, isLarge && styles.statValueLarge]}>{warningCount}</Text>
             </View>
           </View>
-        )}
+          
+          {/* 운행 시간 카드 */}
+          <View style={styles.operatingTimeContainer}>
+            <View style={styles.operatingTimeCard}>
+              <Text style={[styles.statLabel, isLarge && styles.statLabelLarge]}>운행 시간</Text>
+              <Text style={[styles.operatingTimeValue, isLarge && styles.operatingTimeValueLarge]}>{operatingTime}</Text>
+            </View>
+          </View>
+        </View>
       </ScrollView>
     </View>
   );
