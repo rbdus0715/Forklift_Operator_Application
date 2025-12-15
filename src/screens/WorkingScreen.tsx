@@ -1,25 +1,27 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, Pressable, Alert, BackHandler } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { HomeRoutes } from "../navigations/routes";
 import { HomeNavigation } from "../navigations/types";
 import { BLACK, WHITE, GRAY, RED } from "../color";
 import Socket from "react-native-tcp-socket";
 
 const BORDER_WIDTH = 0.2;
-const SOCKET_HOST = "192.168.50.1";
 const SOCKET_PORT = 9000;
 
 export const WorkingScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
+  const route = useRoute();
   const socketRef = useRef<Socket.Socket | null>(null);
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isConnectedRef = useRef<boolean>(false);
   const failureHandledRef = useRef<boolean>(false);
 
   useEffect(() => {
+    const socketHost = (route.params as { socketHost: string })?.socketHost || "192.168.50.1";
+    
     // TCP 소켓 연결
-    console.log("소켓 연결 시도:", `${SOCKET_HOST}:${SOCKET_PORT}`);
+    console.log("소켓 연결 시도:", `${socketHost}:${SOCKET_PORT}`);
     console.log("연결 시작 시간:", new Date().toISOString());
 
     const handleConnectionFailure = () => {
@@ -55,7 +57,7 @@ export const WorkingScreen = () => {
     try {
       const socket = Socket.createConnection(
         {
-          host: SOCKET_HOST,
+          host: socketHost,
           port: SOCKET_PORT,
         },
         () => {
@@ -140,7 +142,7 @@ export const WorkingScreen = () => {
       // console.error("TCP 소켓 생성 실패:", error);
       handleConnectionFailure();
     }
-  }, [navigation]);
+  }, [navigation, route]);
 
   const handleExit = () => {
     Alert.alert("종료하시겠습니까?", "", [
