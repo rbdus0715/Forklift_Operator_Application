@@ -87,6 +87,12 @@ export const HomeScreen = () => {
         >
           <Text style={styles.buttonText}>로그 확인</Text>
         </Pressable>
+        <Pressable
+          style={styles.button}
+          onPress={() => navigation.navigate(HomeRoutes.STATISTICS)}
+        >
+          <Text style={styles.buttonText}>통계 확인</Text>
+        </Pressable>
       </View>
 
       {/* 태그라인 */}

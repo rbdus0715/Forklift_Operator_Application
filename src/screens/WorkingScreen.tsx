@@ -11,8 +11,10 @@ import { WarningLog } from "../components/LogCard/LogCard";
 const BORDER_WIDTH = 0.2;
 const SOCKET_PORT = 9000;
 const WARNING_LOGS_KEY = "@warning_logs";
+const ALL_LOGS_KEY = "@all_logs"; // 모든 거리 데이터 로그
 const WARNING_THRESHOLD_DISTANCE = 3; // 3미터
 const WARNING_MIN_DURATION = 1000; // 1초 (밀리초)
+const LOG_INTERVAL = 1000; // 모든 로그 저장 간격 (1초)
 
 // 원의 반지름 (픽셀)
 const CIRCLE3_RADIUS = 300; // 중간 원 (3m) - 범위 확장
@@ -47,6 +49,10 @@ export const WorkingScreen = () => {
   // 3m 이내 경고 로깅 관련 상태
   const warningEnterTimeRef = useRef<number | null>(null); // 3m 이내 진입 시간
   const isLoggingRef = useRef<boolean>(false); // 로그 저장 중 플래그 (중복 방지)
+  
+  // 모든 로그 저장 관련 상태
+  const lastLogTimeRef = useRef<number>(0); // 마지막 로그 저장 시간
+  const logIntervalRef = useRef<NodeJS.Timeout | null>(null); // 로그 저장 인터벌
 
   // 로깅 상태 리셋 함수
   const resetWarningLogging = () => {
@@ -212,6 +218,15 @@ export const WorkingScreen = () => {
             // 칼만 필터 적용
             const filtered = kalmanFilter(distance);
             setFilteredRD(filtered);
+            
+            // 모든 로그 저장 (1초마다)
+            const now = Date.now();
+            if (now - lastLogTimeRef.current >= LOG_INTERVAL) {
+              lastLogTimeRef.current = now;
+              saveAllLog(filtered).catch((error) => {
+                console.error("전체 로그 저장 실패:", error);
+              });
+            }
           }
         } catch (e) {
           // JSON이 아니면 그대로 출력
@@ -288,6 +303,12 @@ export const WorkingScreen = () => {
         kalmanStateRef.current = null;
         // 경고 로깅 상태 리셋
         resetWarningLogging();
+        // 로그 인터벌 정리
+        if (logIntervalRef.current) {
+          clearInterval(logIntervalRef.current);
+          logIntervalRef.current = null;
+        }
+        lastLogTimeRef.current = 0;
       };
     } catch (error) {
       // console.error("TCP 소켓 생성 실패:", error);
@@ -401,6 +422,43 @@ export const WorkingScreen = () => {
     }
 
   }, [filteredRD, rD]);
+
+  // 모든 거리 데이터 로그 저장 함수
+  const saveAllLog = async (distance: number): Promise<void> => {
+    try {
+      const now = new Date();
+      const timestamp = now.toISOString();
+      const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const time = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
+
+      const newLog: WarningLog = {
+        id: `${timestamp}-${Math.random().toString(36).substr(2, 9)}`,
+        timestamp,
+        distance,
+        date,
+        time,
+        // duration은 없음 (모든 로그는 순간 측정값)
+      };
+
+      // 기존 로그 불러오기
+      const logsJson = await AsyncStorage.getItem(ALL_LOGS_KEY);
+      const logs: WarningLog[] = logsJson ? JSON.parse(logsJson) : [];
+      
+      // 새 로그 추가
+      logs.push(newLog);
+      
+      // 최대 10000개까지만 저장 (메모리 관리)
+      if (logs.length > 10000) {
+        logs.splice(0, logs.length - 10000);
+      }
+      
+      // 저장
+      await AsyncStorage.setItem(ALL_LOGS_KEY, JSON.stringify(logs));
+      console.log("전체 로그 저장 성공:", { distance, date, time, totalLogs: logs.length });
+    } catch (error) {
+      console.error("전체 로그 저장 실패:", error);
+    }
+  };
 
   // 경고 로그 저장 함수
   const saveWarningLog = async (distance: number, duration: number): Promise<void> => {

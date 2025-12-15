@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { HomeRoutes } from "./routes";
 import { HomeScreen } from "../screens/HomeScreen";
 import LogScreen from "../screens/LogScreen";
+import StatisticsScreen from "../screens/StatisticsScreen";
 import { LoadingScreen } from "../screens/LoadingScreen";
 import { WorkingScreen } from "../screens/WorkingScreen";
 import { WHITE } from "../color";
@@ -18,6 +19,7 @@ const HomeStack = () => {
     >
       <Stack.Screen name={HomeRoutes.HOME} component={HomeScreen} />
       <Stack.Screen name={HomeRoutes.LOG} component={LogScreen} />
+      <Stack.Screen name={HomeRoutes.STATISTICS} component={StatisticsScreen} />
       <Stack.Screen name={HomeRoutes.LOADING} component={LoadingScreen} />
       <Stack.Screen name={HomeRoutes.WORKING} component={WorkingScreen} />
     </Stack.Navigator>
