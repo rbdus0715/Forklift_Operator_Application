@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
 import { BLACK, GRAY, WHITE, RED } from "../../color";
+import { useFontSize } from "../../contexts/FontSizeContext";
 
 export interface WarningLog {
   id: string;
@@ -15,18 +16,31 @@ interface LogCardProps {
 }
 
 const LogCard = ({ log }: LogCardProps) => {
+  const { fontSize } = useFontSize();
+  const isLarge = fontSize === "large";
+
   return (
     <View style={styles.card}>
       <View style={styles.cardLeft}>
-        <Text style={styles.warningText}>3m 이내 경고</Text>
-        <Text style={styles.distanceText}>거리: {log.distance.toFixed(2)}m</Text>
+        <Text style={[styles.warningText, isLarge && styles.warningTextLarge]}>
+          3m 이내 경고
+        </Text>
+        <Text style={[styles.distanceText, isLarge && styles.distanceTextLarge]}>
+          거리: {log.distance.toFixed(2)}m
+        </Text>
         {log.duration !== undefined && (
-          <Text style={styles.durationText}>지속 시간: {log.duration.toFixed(1)}초</Text>
+          <Text style={[styles.durationText, isLarge && styles.durationTextLarge]}>
+            지속 시간: {log.duration.toFixed(1)}초
+          </Text>
         )}
       </View>
       <View style={styles.cardRight}>
-        <Text style={styles.dateText}>{log.date}</Text>
-        <Text style={styles.timeText}>{log.time}</Text>
+        <Text style={[styles.dateText, isLarge && styles.dateTextLarge]}>
+          {log.date}
+        </Text>
+        <Text style={[styles.timeText, isLarge && styles.timeTextLarge]}>
+          {log.time}
+        </Text>
       </View>
     </View>
   );
@@ -77,6 +91,21 @@ const styles = StyleSheet.create({
   timeText: {
     fontSize: 12,
     color: GRAY,
+  },
+  warningTextLarge: {
+    fontSize: 20,
+  },
+  distanceTextLarge: {
+    fontSize: 18,
+  },
+  durationTextLarge: {
+    fontSize: 18,
+  },
+  dateTextLarge: {
+    fontSize: 16,
+  },
+  timeTextLarge: {
+    fontSize: 16,
   },
 });
 
