@@ -46,8 +46,13 @@ export const WorkingScreen = () => {
 
   // 3m 이내 경고 로깅 관련 상태
   const warningEnterTimeRef = useRef<number | null>(null); // 3m 이내 진입 시간
-  const warningStartTimeRef = useRef<number | null>(null); // 1초 이상 지속된 시점 (로그 시작 시간)
-  const warningCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null); // 1초 체크용 타임아웃
+  const isLoggingRef = useRef<boolean>(false); // 로그 저장 중 플래그 (중복 방지)
+
+  // 로깅 상태 리셋 함수
+  const resetWarningLogging = () => {
+    warningEnterTimeRef.current = null;
+    isLoggingRef.current = false;
+  };
 
   useEffect(() => {
     const socketHost = (route.params as { socketHost: string })?.socketHost || "192.168.50.1";
@@ -78,12 +83,7 @@ export const WorkingScreen = () => {
         }
         
         // 로깅 상태 리셋
-        if (warningCheckTimeoutRef.current) {
-          clearTimeout(warningCheckTimeoutRef.current);
-          warningCheckTimeoutRef.current = null;
-        }
-        warningEnterTimeRef.current = null;
-        warningStartTimeRef.current = null;
+        resetWarningLogging();
         
         // 알람 표시
         Alert.alert("서버 연결 실패했습니다", "서버와의 연결이 끊어졌습니다.", [
@@ -117,12 +117,7 @@ export const WorkingScreen = () => {
         }
         
         // 로깅 상태 리셋
-        if (warningCheckTimeoutRef.current) {
-          clearTimeout(warningCheckTimeoutRef.current);
-          warningCheckTimeoutRef.current = null;
-        }
-        warningEnterTimeRef.current = null;
-        warningStartTimeRef.current = null;
+        resetWarningLogging();
         
         // 알람 표시
         Alert.alert("연결이 끊어졌습니다", "서버와의 연결이 끊어졌습니다. 홈으로 돌아갑니다.", [
@@ -247,12 +242,7 @@ export const WorkingScreen = () => {
         isConnectedRef.current = false;
         
         // 로깅 상태 리셋
-        if (warningCheckTimeoutRef.current) {
-          clearTimeout(warningCheckTimeoutRef.current);
-          warningCheckTimeoutRef.current = null;
-        }
-        warningEnterTimeRef.current = null;
-        warningStartTimeRef.current = null;
+        resetWarningLogging();
         
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
@@ -297,12 +287,7 @@ export const WorkingScreen = () => {
         alertRef.current = false;
         kalmanStateRef.current = null;
         // 경고 로깅 상태 리셋
-        if (warningCheckTimeoutRef.current) {
-          clearTimeout(warningCheckTimeoutRef.current);
-          warningCheckTimeoutRef.current = null;
-        }
-        warningEnterTimeRef.current = null;
-        warningStartTimeRef.current = null;
+        resetWarningLogging();
       };
     } catch (error) {
       // console.error("TCP 소켓 생성 실패:", error);
@@ -344,12 +329,7 @@ export const WorkingScreen = () => {
           alertRef.current = false;
           kalmanStateRef.current = null;
           // 경고 로깅 상태 리셋
-          if (warningCheckTimeoutRef.current) {
-            clearTimeout(warningCheckTimeoutRef.current);
-            warningCheckTimeoutRef.current = null;
-          }
-          warningEnterTimeRef.current = null;
-          warningStartTimeRef.current = null;
+          resetWarningLogging();
           navigation.navigate(HomeRoutes.HOME);
         },
       },
@@ -365,16 +345,6 @@ export const WorkingScreen = () => {
 
     return () => backHandler.remove();
   }, []);
-
-  // 로깅 상태 리셋 함수
-  const resetWarningLogging = () => {
-    if (warningCheckTimeoutRef.current) {
-      clearTimeout(warningCheckTimeoutRef.current);
-      warningCheckTimeoutRef.current = null;
-    }
-    warningEnterTimeRef.current = null;
-    warningStartTimeRef.current = null;
-  };
 
   // 거리가 3미터 이내인지 확인 및 로깅 처리 (필터링된 값 사용)
   useEffect(() => {
@@ -398,47 +368,49 @@ export const WorkingScreen = () => {
       if (warningEnterTimeRef.current === null) {
         // 처음 진입한 경우
         warningEnterTimeRef.current = Date.now();
-        
-        // 1초 후에 로그 시작 시간 기록
-        warningCheckTimeoutRef.current = setTimeout(() => {
-          // 연결 상태 재확인
-          if (!isConnectedRef.current) {
-            resetWarningLogging();
-            return;
-          }
-          if (warningEnterTimeRef.current !== null) {
-            // 여전히 3m 이내에 있으면 로그 시작 시간 기록
-            warningStartTimeRef.current = Date.now();
-          }
-        }, WARNING_MIN_DURATION);
       }
     } else {
       // 3m 이내에서 벗어남
-      if (warningStartTimeRef.current !== null && isConnectedRef.current) {
-        // 1초 이상 지속되었던 경우 로그 저장 (연결 상태 확인)
-        const duration = (Date.now() - warningStartTimeRef.current) / 1000; // 초 단위
-        const exitDistance = filteredRD !== null ? filteredRD : rD;
+      if (warningEnterTimeRef.current !== null && isConnectedRef.current && !isLoggingRef.current) {
+        // 진입 시간부터 벗어난 시간까지의 총 지속 시간 계산
+        const totalDuration = (Date.now() - warningEnterTimeRef.current) / 1000; // 초 단위
         
-        if (exitDistance !== null) {
-          saveWarningLog(exitDistance, duration);
+        // 1초 이상 지속되었던 경우에만 로그 저장
+        if (totalDuration >= WARNING_MIN_DURATION / 1000) {
+          const exitDistance = filteredRD !== null ? filteredRD : rD;
+          
+          if (exitDistance !== null) {
+            // 로그 저장 중 플래그 설정 (중복 방지)
+            isLoggingRef.current = true;
+            
+            // 1초 이상 지속된 경우, 1초 이후부터의 지속 시간 계산
+            const duration = totalDuration - (WARNING_MIN_DURATION / 1000);
+            saveWarningLog(exitDistance, duration).finally(() => {
+              // 로그 저장 완료 후 상태 초기화
+              resetWarningLogging();
+            });
+            return; // 로그 저장 중이므로 여기서 종료
+          }
         }
       }
       
-      // 상태 초기화
-      resetWarningLogging();
+      // 상태 초기화 (로그 저장하지 않은 경우)
+      if (!isLoggingRef.current) {
+        resetWarningLogging();
+      }
     }
 
-    // 클린업 함수
-    return () => {
-      if (warningCheckTimeoutRef.current) {
-        clearTimeout(warningCheckTimeoutRef.current);
-      }
-    };
   }, [filteredRD, rD]);
 
   // 경고 로그 저장 함수
-  const saveWarningLog = async (distance: number, duration: number) => {
+  const saveWarningLog = async (distance: number, duration: number): Promise<void> => {
     try {
+      // duration이 0보다 작거나 같으면 저장하지 않음
+      if (duration <= 0) {
+        console.log("경고 로그 저장 스킵: duration이 0 이하", { distance, duration });
+        return;
+      }
+
       const now = new Date();
       const timestamp = now.toISOString();
       const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
@@ -463,9 +435,10 @@ export const WorkingScreen = () => {
       // 저장
       await AsyncStorage.setItem(WARNING_LOGS_KEY, JSON.stringify(logs));
       
-      console.log("경고 로그 저장:", { distance, duration });
+      console.log("경고 로그 저장 성공:", { distance, duration: duration.toFixed(2), date, time, totalLogs: logs.length });
     } catch (error) {
       console.error("경고 로그 저장 실패:", error);
+      throw error; // 에러를 다시 throw하여 finally에서 처리할 수 있도록
     }
   };
 

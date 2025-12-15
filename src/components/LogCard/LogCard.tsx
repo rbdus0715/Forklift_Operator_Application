@@ -18,11 +18,13 @@ const LogCard = ({ log }: LogCardProps) => {
   return (
     <View style={styles.card}>
       <View style={styles.cardLeft}>
-        <Text style={styles.warningText}>⚠️ 작업자 경고</Text>
+        <Text style={styles.warningText}>3m 이내 경고</Text>
         <Text style={styles.distanceText}>거리: {log.distance.toFixed(2)}m</Text>
         {log.duration !== undefined && (
           <Text style={styles.durationText}>지속 시간: {log.duration.toFixed(1)}초</Text>
         )}
+      </View>
+      <View style={styles.cardRight}>
         <Text style={styles.dateText}>{log.date}</Text>
         <Text style={styles.timeText}>{log.time}</Text>
       </View>
@@ -45,6 +47,10 @@ const styles = StyleSheet.create({
   cardLeft: {
     flex: 1,
   },
+  cardRight: {
+    alignItems: "flex-end",
+    justifyContent: "flex-start",
+  },
   warningText: {
     fontSize: 16,
     fontWeight: "600",
@@ -60,13 +66,13 @@ const styles = StyleSheet.create({
   durationText: {
     fontSize: 14,
     fontWeight: "500",
-    color: RED,
+    color: BLACK,
     marginBottom: 4,
   },
   dateText: {
     fontSize: 12,
     color: GRAY,
-    marginTop: 4,
+    marginBottom: 4,
   },
   timeText: {
     fontSize: 12,
