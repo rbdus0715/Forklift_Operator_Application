@@ -14,7 +14,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.rbdus0715.Forklift-Operator-Application"
+      "bundleIdentifier": "com.rbdus0715.Forklift-Operator-Application",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -26,6 +30,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "0386e3e8-fedc-42ce-a815-6bec316296ed"
+      }
     }
   }
 }
