@@ -89,7 +89,7 @@ const StatisticsScreen = () => {
 
   // 시간대별 속도 데이터 계산 (시간대별 평균 속도 또는 빈도)
   const chartData = useMemo(() => {
-    // 작업 시간: 9시 ~ 18시 (9시간)
+    // 작업 시간: 9시 ~ 18시 (9시간) - 고정
     const WORK_START_HOUR = 9;
     const WORK_END_HOUR = 18;
     
@@ -97,23 +97,36 @@ const StatisticsScreen = () => {
     const hourlyData: { [key: number]: number[] } = {};
     
     filteredLogs.forEach((log) => {
-      const timeParts = log.time.split(":");
-      const hour = parseInt(timeParts[0], 10);
-      
-      // 작업 시간대(9시~18시)만 처리
-      if (hour >= WORK_START_HOUR && hour < WORK_END_HOUR) {
-        if (!hourlyData[hour]) {
-          hourlyData[hour] = [];
+      try {
+        const timeParts = log.time.split(":");
+        if (timeParts.length < 2) {
+          console.warn("잘못된 시간 형식:", log.time);
+          return;
         }
         
-        // 속도 계산: 이전 로그와의 시간 차이와 거리 차이를 이용
-        // duration이 없으므로 시간대별 평균 거리나 빈도를 사용
-        // 여기서는 단순히 거리 값을 사용 (또는 시간대별 평균 거리)
-        hourlyData[hour].push(log.distance);
+        const hour = parseInt(timeParts[0], 10);
+        
+        // 유효한 시간인지 확인 (0~23시)
+        if (isNaN(hour) || hour < 0 || hour >= 24) {
+          console.warn("유효하지 않은 시간:", log.time);
+          return;
+        }
+        
+        // 작업 시간대(9시~18시)만 처리
+        if (hour >= WORK_START_HOUR && hour < WORK_END_HOUR) {
+          if (!hourlyData[hour]) {
+            hourlyData[hour] = [];
+          }
+          
+          // 시간대별 거리 값 수집
+          hourlyData[hour].push(log.distance);
+        }
+      } catch (error) {
+        console.error("시간 파싱 에러:", error, log);
       }
     });
 
-    // 각 시간대의 평균 거리 계산 (작업 시간대만)
+    // 각 시간대의 평균 거리 계산 (작업 시간대만 - 9시~18시 고정)
     const labels: string[] = [];
     const data: number[] = [];
     
@@ -172,7 +185,7 @@ const StatisticsScreen = () => {
     }, [])
   );
 
-  const hasData = chartData.data.some((val) => val > 0);
+  const hasData = chartData.data.length > 0 && chartData.data.some((val) => val > 0);
 
   // 오늘 날짜 계산
   const todayDate = useMemo(() => {
@@ -192,6 +205,29 @@ const StatisticsScreen = () => {
   const warningCount = useMemo(() => {
     return todayWarningLogs.length;
   }, [todayWarningLogs]);
+
+  // 선택된 날짜의 운행 시간 계산 (첫 로그 ~ 마지막 로그)
+  const operatingTime = useMemo(() => {
+    if (filteredLogs.length === 0) {
+      return "00:00:00";
+    }
+
+    // 타임스탬프 기준으로 정렬
+    const sortedLogs = [...filteredLogs].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
+
+    const firstLogTime = new Date(sortedLogs[0].timestamp).getTime();
+    const lastLogTime = new Date(sortedLogs[sortedLogs.length - 1].timestamp).getTime();
+    const diffMs = lastLogTime - firstLogTime;
+
+    // 밀리초를 시:분:초로 변환
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }, [filteredLogs]);
 
   return (
     <View style={styles.container}>
@@ -345,6 +381,14 @@ const StatisticsScreen = () => {
                 <Text style={[styles.statValue, isLarge && styles.statValueLarge]}>{warningCount}</Text>
               </View>
             </View>
+            
+            {/* 운행 시간 카드 */}
+            <View style={styles.operatingTimeContainer}>
+              <View style={styles.operatingTimeCard}>
+                <Text style={[styles.statLabel, isLarge && styles.statLabelLarge]}>운행 시간</Text>
+                <Text style={[styles.operatingTimeValue, isLarge && styles.operatingTimeValueLarge]}>{operatingTime}</Text>
+              </View>
+            </View>
           </View>
         )}
       </ScrollView>
@@ -468,6 +512,24 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: BLACK,
   },
+  operatingTimeContainer: {
+    width: "100%",
+    marginTop: 12,
+  },
+  operatingTimeCard: {
+    backgroundColor: WHITE,
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  operatingTimeValue: {
+    fontSize: 32,
+    fontWeight: "700",
+    color: BLACK,
+  },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
@@ -550,6 +612,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   statValueLarge: {
+    fontSize: 40,
+  },
+  operatingTimeValueLarge: {
     fontSize: 40,
   },
   emptyTextLarge: {
