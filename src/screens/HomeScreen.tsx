@@ -102,6 +102,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 24,
+    paddingTop: 120,
+    paddingBottom: 100,
   },
   header: {
     position: "absolute",
@@ -119,7 +121,6 @@ const styles = StyleSheet.create({
   inputContainer: {
     width: "100%",
     marginBottom: 40,
-    marginTop: 100,
   },
   inputLabel: {
     fontSize: 16,

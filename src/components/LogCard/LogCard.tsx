@@ -1,14 +1,33 @@
 import { StyleSheet, Text, View } from "react-native";
-import { BLACK, GRAY, WHITE } from "../../color";
+import { BLACK, GRAY, WHITE, RED } from "../../color";
 
-const LogCard = () => {
+export interface WarningLog {
+  id: string;
+  timestamp: string;
+  distance: number;
+  date: string;
+  time: string;
+  duration?: number; // 지속 시간 (초)
+}
+
+interface LogCardProps {
+  log: WarningLog;
+}
+
+const LogCard = ({ log }: LogCardProps) => {
   return (
     <View style={styles.card}>
       <View style={styles.cardLeft}>
-        <Text style={styles.forkliftText}>지게차-1</Text>
-        <Text style={styles.userText}>user-1</Text>
+        <Text style={styles.warningText}>3m 이내 경고</Text>
+        <Text style={styles.distanceText}>거리: {log.distance.toFixed(2)}m</Text>
+        {log.duration !== undefined && (
+          <Text style={styles.durationText}>지속 시간: {log.duration.toFixed(1)}초</Text>
+        )}
       </View>
-      <Text style={styles.speedText}>25km/h 운행</Text>
+      <View style={styles.cardRight}>
+        <Text style={styles.dateText}>{log.date}</Text>
+        <Text style={styles.timeText}>{log.time}</Text>
+      </View>
     </View>
   );
 };
@@ -20,7 +39,7 @@ const styles = StyleSheet.create({
     padding: 16,
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     borderWidth: 0.3,
     borderColor: GRAY,
     elevation: 3,
@@ -28,20 +47,36 @@ const styles = StyleSheet.create({
   cardLeft: {
     flex: 1,
   },
-  forkliftText: {
+  cardRight: {
+    alignItems: "flex-end",
+    justifyContent: "flex-start",
+  },
+  warningText: {
     fontSize: 16,
     fontWeight: "600",
-    color: BLACK,
-    marginBottom: 4,
+    color: RED,
+    marginBottom: 8,
   },
-  userText: {
-    fontSize: 14,
-    color: GRAY,
-  },
-  speedText: {
+  distanceText: {
     fontSize: 14,
     fontWeight: "500",
     color: BLACK,
+    marginBottom: 4,
+  },
+  durationText: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: BLACK,
+    marginBottom: 4,
+  },
+  dateText: {
+    fontSize: 12,
+    color: GRAY,
+    marginBottom: 4,
+  },
+  timeText: {
+    fontSize: 12,
+    color: GRAY,
   },
 });
 

@@ -7,25 +7,26 @@ import { WHITE, GRAY, BLACK } from "../color";
 import Socket from "react-native-tcp-socket";
 
 const SOCKET_PORT = 9000;
+const CONNECTION_TIMEOUT = 30000; // 30초
 
 export const LoadingScreen = () => {
   const navigation = useNavigation<HomeNavigation>();
   const route = useRoute();
-  const { socketHost } = route.params as { socketHost: string };
   const socketRef = useRef<Socket.Socket | null>(null);
   const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isConnectedRef = useRef<boolean>(false);
   const failureHandledRef = useRef<boolean>(false);
 
   useEffect(() => {
+    const socketHost = (route.params as { socketHost: string })?.socketHost || "192.168.50.1";
+    
     console.log("소켓 연결 시도:", `${socketHost}:${SOCKET_PORT}`);
     console.log("연결 시작 시간:", new Date().toISOString());
 
     const handleConnectionFailure = () => {
-      if (!isConnectedRef.current && !failureHandledRef.current) {
+      if (!failureHandledRef.current) {
         failureHandledRef.current = true;
-        console.error("연결 실패 처리 시작");
-        Alert.alert("서버 연결 실패했습니다", "", [
+        Alert.alert("서버 연결 실패했습니다", "서버와의 연결이 끊어졌습니다.", [
           {
             text: "확인",
             onPress: () => {
@@ -36,6 +37,19 @@ export const LoadingScreen = () => {
       }
     };
 
+    const handleConnectionSuccess = () => {
+      if (!failureHandledRef.current) {
+        isConnectedRef.current = true;
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+        }
+        console.log("소켓 연결 성공");
+        console.log("연결 성공 시간:", new Date().toISOString());
+        // 연결 성공 시 WorkingScreen으로 이동
+        navigation.navigate(HomeRoutes.WORKING, { socketHost });
+      }
+    };
+
     try {
       const socket = Socket.createConnection(
         {
@@ -43,46 +57,35 @@ export const LoadingScreen = () => {
           port: SOCKET_PORT,
         },
         () => {
-          // 연결 성공
-          console.log("✅ 소켓 연결 성공");
-          console.log("연결 성공 시간:", new Date().toISOString());
-          isConnectedRef.current = true;
-          if (connectionTimeoutRef.current) {
-            clearTimeout(connectionTimeoutRef.current);
-          }
-          // 연결 성공 시 WorkingScreen으로 이동
-          socket.destroy(); // LoadingScreen에서는 연결을 닫고, WorkingScreen에서 다시 연결
-          navigation.navigate(HomeRoutes.WORKING, { socketHost });
+          // 연결 성공 콜백
+          handleConnectionSuccess();
         }
       );
 
-      // 연결 타임아웃 설정 (30초)
+      // 연결 타임아웃 설정
       connectionTimeoutRef.current = setTimeout(() => {
-        console.error("❌ 연결 타임아웃 (30초 경과)");
-        if (socketRef.current) {
+        if (socketRef.current && !isConnectedRef.current) {
           socketRef.current.destroy();
+          handleConnectionFailure();
         }
-        handleConnectionFailure();
-      }, 30000);
+      }, CONNECTION_TIMEOUT);
 
       socket.on("error", (error) => {
-        console.error("❌ 소켓 에러 발생");
-        console.error("에러 시간:", new Date().toISOString());
-        console.error("에러 상세:", error);
+        console.error("소켓 에러 발생:", error);
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
         }
-        handleConnectionFailure();
+        if (!isConnectedRef.current) {
+          handleConnectionFailure();
+        }
       });
 
       socket.on("close", () => {
-        console.log("🔌 소켓 연결 종료");
-        console.log("종료 시간:", new Date().toISOString());
+        console.log("소켓 연결 종료");
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
         }
-        // 연결 성공하지 않은 경우 실패 처리
-        if (!isConnectedRef.current) {
+        if (!isConnectedRef.current && !failureHandledRef.current) {
           setTimeout(() => {
             handleConnectionFailure();
           }, 100);
@@ -91,21 +94,22 @@ export const LoadingScreen = () => {
 
       socketRef.current = socket;
 
-      // 컴포넌트 언마운트 시 정리
+      // 컴포넌트 언마운트 시 연결 종료
       return () => {
         if (connectionTimeoutRef.current) {
           clearTimeout(connectionTimeoutRef.current);
         }
-        if (socketRef.current) {
+        if (socketRef.current && !isConnectedRef.current) {
+          console.log("컴포넌트 언마운트 - 소켓 연결 종료");
           socketRef.current.destroy();
           socketRef.current = null;
         }
       };
     } catch (error) {
-      console.error("❌ TCP 소켓 생성 실패:", error);
+      console.error("TCP 소켓 생성 실패:", error);
       handleConnectionFailure();
     }
-  }, [navigation, socketHost]);
+  }, [navigation, route]);
 
   return (
     <View style={styles.container}>
