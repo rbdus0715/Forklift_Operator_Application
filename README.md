@@ -3,8 +3,8 @@
 > **프로젝트: 지게차-작업자 충돌 방지를 위한 IoT 시스템**
 <br>
 
-[Arduino](https://github.com/pactorialwinsall/Arduino_n_Socket)
-[WISE-PaaS](https://github.com/pactorialwinsall/WISE-PaaS-test)
+Arduino 앵커 및 웨어러블, Wise-PasS 데이터 허브와 연결 [link](https://github.com/pactorialwinsall/Arduino_n_Socket)<br>
+Wise-Paas 대시보드 [link](https://github.com/pactorialwinsall/WISE-PaaS-test)
 
 <img width="562" height="425" alt="image" src="https://github.com/user-attachments/assets/5d9297ba-1e5c-427e-95db-bb65ea2cd75c" />
 
