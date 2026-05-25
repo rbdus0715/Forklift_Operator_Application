@@ -1,6 +1,8 @@
 # 2026 Advantech AIoT Innoworks
+**🏆 대상 수상**
 > **팀명: 팩토리얼(Factorial)**<br>
 > **프로젝트: 지게차-작업자 충돌 방지를 위한 IoT 시스템**
+
 <br>
 
 Arduino 앵커 및 웨어러블, Wise-PasS 데이터 허브와 연결 [link](https://github.com/pactorialwinsall/Arduino_n_Socket)<br>
